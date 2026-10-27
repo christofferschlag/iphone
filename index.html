@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Stjerneven</title>
+  <meta name="description" content="Din lille ven fra rummet.">
+  <meta name="theme-color" content="#0b0a24">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Stjerneven">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div class="sky" aria-hidden="true"></div>
+
+  <div class="app">
+    <main class="views">
+      <section class="view" id="view-onboarding" aria-label="Velkommen"></section>
+
+      <section class="view" id="view-chat" aria-label="Snak">
+        <header class="topbar">
+          <div class="who">
+            <div class="who-name" id="chat-name">Pip</div>
+            <div class="who-status" id="chat-status"></div>
+          </div>
+          <button class="dust" id="chat-dust" type="button" aria-label="Stjernestøv – åbn planeten">✨ <span class="dust-count">0</span></button>
+        </header>
+        <div class="stage" id="stage">
+          <div class="stage-alien" id="stage-alien"></div>
+          <div class="poke" id="poke" aria-hidden="true"></div>
+        </div>
+        <div class="messages" id="messages" aria-live="polite"></div>
+        <div class="ideas" id="ideas"></div>
+        <form class="composer" id="composer">
+          <textarea id="input" rows="1" placeholder="Skriv …" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" aria-label="Besked"></textarea>
+          <button class="send" id="send" type="submit" aria-label="Send">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>
+          </button>
+        </form>
+      </section>
+
+      <section class="view" id="view-planet" aria-label="Planet">
+        <header class="topbar">
+          <div class="who">
+            <div class="who-name" id="planet-name">Lumora</div>
+            <div class="who-status">Træk for at dreje planeten</div>
+          </div>
+          <div class="dust" aria-label="Stjernestøv">✨ <span class="dust-count">0</span></div>
+        </header>
+        <div class="planet-wrap" id="planet-wrap"></div>
+        <div class="shop">
+          <div class="shop-title">Pynt jeres planet</div>
+          <div class="shop-list" id="shop-list"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-memories" aria-label="Minder">
+        <header class="topbar">
+          <div class="who">
+            <div class="who-name">Minder</div>
+            <div class="who-status" id="mem-sub"></div>
+          </div>
+        </header>
+        <div class="scroll" id="mem-list"></div>
+      </section>
+
+      <section class="view" id="view-settings" aria-label="Indstillinger">
+        <header class="topbar">
+          <div class="who">
+            <div class="who-name">Indstillinger</div>
+          </div>
+        </header>
+        <div class="scroll" id="settings-body"></div>
+      </section>
+    </main>
+
+    <nav class="tabbar" id="tabbar" aria-label="Menu" hidden>
+      <button type="button" data-view="chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4A2.5 2.5 0 0 1 4 13.5Z"/></svg>
+        <span>Snak</span>
+      </button>
+      <button type="button" data-view="planet">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10.5" ry="3.6" transform="rotate(-20 12 12)"/></svg>
+        <span>Planet</span>
+      </button>
+      <button type="button" data-view="memories">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3.5 12.9 8.6 18 10.5 12.9 12.4 11 17.5 9.1 12.4 4 10.5 9.1 8.6Z"/><path d="M18.5 15.5 19.2 17.3 21 18 19.2 18.7 18.5 20.5 17.8 18.7 16 18 17.8 17.3Z"/></svg>
+        <span>Minder</span>
+      </button>
+      <button type="button" data-view="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+        <span>Indstillinger</span>
+      </button>
+    </nav>
+  </div>
+
+  <dialog class="sheet" id="sheet"></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
