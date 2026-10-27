@@ -7,7 +7,7 @@ Home workouts with a buddy who cheers you on. Peppy is a web app (PWA) for iPhon
 - **Five buddies to choose from:** Kit the fox, Bao the panda, Bolt the robot, Mo the monster and Pip the alien. Your buddy shows every exercise as you do it, sweats with you, and cheers you on.
 - **8 workouts, 15 bodyweight moves:** Wake-Up Boost, Full Body Basics, Cardio Blast, Strong Legs, Core Power, Upper Body, 7-Minute Mix and Desk Break. No equipment needed.
 - **Your pace:** Easy, Normal or Hard (20, 30 or 45 seconds per move) and 1 to 4 rounds.
-- **Workout player:** a big timer, beeps for the last three seconds, an optional voice coach, pause, skip and back. The screen stays on while you train.
+- **Workout player:** a big timer, beeps for the last three seconds, a voice coach that calls out each move, pause, skip and back. The screen stays on while you train.
 - **Levels and gear:** every workout earns XP. New levels unlock a sweatband, wristbands, sneakers, a gold medal, sunglasses, a hero cape and a crown for your buddy.
 - **Progress:** streaks, a weekly goal, active minutes per day, a 12-week calendar and your recent workouts.
 - **Backup:** save all your data to a file and restore it, for example on a new phone.
@@ -52,6 +52,8 @@ js/figures.js       the five buddies, drawn as SVG on one shared rig, plus their
 js/exercises.js     exercises, workouts and difficulty levels
 js/progress.js      XP, levels, streaks and weekly numbers
 js/sound.js         beeps (Web Audio) and the voice coach
+js/coach.js         everything the voice coach says
+audio/              the coach's recorded lines (one MP3 per line)
 js/state.js         local storage
 sw.js               service worker (offline use and fast start)
 ```
@@ -68,6 +70,8 @@ Rebuild the PNG icons from `icons/icon.svg` (needs `npm install`):
 npm run icons
 ```
 
+The coach's voice is generated with the open [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) voice model (Apache-2.0). After changing a line in `js/coach.js` or adding an exercise, rebuild the clips with `tools/make-voice.py` (setup steps are at the top of the file). If a clip can't be loaded, the app falls back to the phone's own speech voice.
+
 All buddies share one rig (the same shoulder, hip and neck positions), so a new exercise only needs one set of keyframes in `css/figures.css` and an entry in `js/exercises.js`.
 
-When you publish a new version, bump `CACHE` in `sw.js` (for example `peppy-v2`) so phones clear out old files. The app fetches new files in the background and uses them the next time it opens.
+When you publish a new version, bump `CACHE` in `sw.js` (for example `peppy-v3`) so phones clear out old files. The app fetches new files in the background and uses them the next time it opens.

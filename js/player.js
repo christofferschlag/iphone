@@ -1,7 +1,7 @@
 // The full-screen workout player: timer, buddy, sounds and the finish screen.
 import { EXERCISES, buildSegments } from "./exercises.js";
 import { figureById, figureSVG, pose } from "./figures.js";
-import { beep, say, stopSpeaking, unlockAudio } from "./sound.js";
+import { beep, preloadLines, sayLines, stopSpeaking, unlockAudio } from "./sound.js";
 import { $, escapeHtml, confirmSheet } from "./ui.js";
 
 const RING = 2 * Math.PI * 52;
@@ -26,6 +26,20 @@ const ICONS = {
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
+// The coach's lines (see coach.js) a workout can need.
+function linesFor(segments) {
+  const ids = new Set(["half-1", "half-2", "half-3", "push-1", "push-2", "push-3", "done-1", "done-2", "ended"]);
+  const works = segments.filter((s) => s.type === "work");
+  for (const seg of segments) {
+    if (seg.type === "ready") ids.add(`ready-${seg.ex}`);
+    else if (seg.type === "work") ids.add(`go-${seg.ex}`);
+    else ids.add(`next-${seg.ex}`);
+    if (seg.roundBreak) ids.add("round-done");
+  }
+  if (works.length) ids.add(`last-${works.at(-1).ex}`);
+  return [...ids];
+}
+
 function clock(seconds) {
   const s = Math.round(seconds);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -45,6 +59,7 @@ export function startWorkout({ workout, difficulty, rounds, settings, buddy, wea
   const works = segments.filter((s) => s.type === "work");
   const fig = figureById(buddy);
   const root = $("#player");
+  if (settings.voice) preloadLines(linesFor(segments));
 
   run = {
     workout, difficulty, rounds, segments, works, fig, settings, onComplete, onSettings, onClose,
@@ -97,8 +112,8 @@ const el = (selector) => $(`#player ${selector}`);
 const buddySvg = () => el(".pl-stage svg.fig");
 const soundOn = () => run.settings.sound || run.settings.voice;
 
-function speak(text) {
-  if (run.settings.voice) say(text);
+function speak(...ids) {
+  if (run.settings.voice) sayLines(ids);
 }
 
 function sound(name) {
@@ -146,7 +161,7 @@ function startSegment(index) {
     el(".pl-label").textContent = "Get ready";
     el(".pl-name").textContent = ex.name;
     el(".pl-tip").textContent = ex.tip;
-    speak(`Get ready. First up: ${ex.name}.`);
+    speak(`ready-${seg.ex}`);
     bubble(pick(CHEERS.start));
   } else if (seg.type === "work") {
     pose(svg, { anim: seg.ex, mood: "work", cycle: ex.cycle });
@@ -154,7 +169,7 @@ function startSegment(index) {
     el(".pl-name").textContent = ex.name;
     el(".pl-tip").textContent = ex.tip;
     sound("go");
-    speak(lastMove ? `Last one! ${ex.name}.` : `${ex.name}. Go!`);
+    speak(`${lastMove ? "last" : "go"}-${seg.ex}`);
   } else {
     pose(svg, { anim: "rest", mood: "rest", cycle: 3.6 });
     el(".pl-label").textContent = seg.roundBreak ? "Round break" : "Rest";
@@ -166,7 +181,8 @@ function startSegment(index) {
       phase: ex.peak,
     })}</span><span>Next: <b>${escapeHtml(ex.name)}</b></span>`;
     sound("rest");
-    speak(`Rest. Next up: ${ex.name}.`);
+    if (seg.roundBreak) speak("round-done", `next-${seg.ex}`);
+    else speak(`next-${seg.ex}`);
     bubble(pick(seg.roundBreak ? ["Round done! 🎉", ...CHEERS.rest] : CHEERS.rest));
   }
   el(".pl-name").classList.remove("pop");
@@ -194,11 +210,12 @@ function onSecond(seg, sec) {
     svg.classList.add("sweaty");
     if (ex.hold) pose(svg, { mood: "strain" });
     bubble(pick([...CHEERS.half, ...run.fig.cheers]));
-    if (seg.dur >= 30) speak("Halfway!");
+    if (seg.dur >= 30) speak(pick(["half-1", "half-2", "half-3"]));
   }
   if (sec === 5 && seg.dur >= 15) {
     pose(svg, { mood: "strain" });
     bubble(pick(CHEERS.end));
+    speak(pick(["push-1", "push-2", "push-3"]));
   }
 }
 
@@ -272,6 +289,7 @@ function pause() {
 
 function resume() {
   if (!run?.pausedAt) return;
+  unlockAudio();
   const pausedFor = performance.now() - run.pausedAt;
   run.startedAt += pausedFor;
   run.pausedTotal += pausedFor;
@@ -361,7 +379,7 @@ function finish(completed) {
   };
   const outcome = run.onComplete(result);
   sound("done");
-  speak(completed ? "Workout complete. Amazing job!" : "Nice effort. See you next time!");
+  speak(completed ? pick(["done-1", "done-2"]) : "ended");
   const confetti = Array.from({ length: 28 }, (_, i) => {
     const colors = ["#ff6a3d", "#19b394", "#ffcf3f", "#6b5cff", "#ff8fc6"];
     return `<i style="left:${(i * 37) % 100}%;background:${colors[i % colors.length]};animation-delay:${((i * 0.13) % 1.6).toFixed(2)}s;animation-duration:${(2.4 + (i % 5) * 0.35).toFixed(2)}s"></i>`;

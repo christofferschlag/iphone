@@ -13,7 +13,7 @@ import {
   sessionXP,
 } from "./progress.js";
 import { startWorkout, isRunning } from "./player.js";
-import { beep, say, unlockAudio } from "./sound.js";
+import { beep, sayLines, unlockAudio } from "./sound.js";
 import {
   $,
   escapeHtml,
@@ -576,7 +576,7 @@ function renderSettings() {
         <label class="toggle"><span>Beeps</span><input type="checkbox" data-setting="sound" ${s.sound ? "checked" : ""}></label>
         <label class="toggle"><span>Voice coach</span><input type="checkbox" data-setting="voice" ${s.voice ? "checked" : ""}></label>
         <button type="button" class="btn" data-act="test-sound">Test sound</button>
-        <p class="muted small">Beeps follow the ring/silent switch. The voice uses your iPhone's English voice.</p>
+        <p class="muted small">Sound follows the ring/silent switch and plays along with your music.</p>
       </section>
       <section class="card">
         <h2>Your data</h2>
@@ -731,7 +731,7 @@ function bindEvents() {
     if (act === "test-sound") {
       unlockAudio();
       if (state.settings.sound) beep.go();
-      if (state.settings.voice) say(`Hi${state.name ? ` ${state.name}` : ""}! Ready when you are.`);
+      if (state.settings.voice) sayLines(["test"]);
       if (!state.settings.sound && !state.settings.voice) toast("Turn on beeps or the voice coach first.");
     } else if (act === "export") {
       exportBackup();
