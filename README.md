@@ -1,91 +1,73 @@
-# Stjerneven 👽✨
+# Peppy 🦊💪
 
-En lille alien-ven til iPhone, inspireret af Tolan. Din ven er et nysgerrigt rumvæsen, der chatter med dig, husker det, du fortæller, og bygger en lille planet sammen med dig.
+Home workouts with a buddy who cheers you on. Peppy is a web app (PWA) for iPhone: you add it to your home screen from Safari, and it opens full screen with its own icon like any other app. It is free to use, works offline and needs no account and no API key.
 
-Appen er en web-app (PWA), som du lægger på hjemmeskærmen. Så åbner den i fuld skærm med sit eget ikon, ligesom en almindelig app. Du skal ikke bruge App Store eller en Mac.
+## What it does
 
-## Det kan appen
+- **Five buddies to choose from:** Kit the fox, Bao the panda, Bolt the robot, Mo the monster and Pip the alien. Your buddy shows every exercise as you do it, sweats with you, and cheers you on.
+- **8 workouts, 15 bodyweight moves:** Wake-Up Boost, Full Body Basics, Cardio Blast, Strong Legs, Core Power, Upper Body, 7-Minute Mix and Desk Break. No equipment needed.
+- **Your pace:** Easy, Normal or Hard (20, 30 or 45 seconds per move) and 1 to 4 rounds.
+- **Workout player:** a big timer, beeps for the last three seconds, an optional voice coach, pause, skip and back. The screen stays on while you train.
+- **Levels and gear:** every workout earns XP. New levels unlock a sweatband, wristbands, sneakers, a gold medal, sunglasses, a hero cape and a crown for your buddy.
+- **Progress:** streaks, a weekly goal, active minutes per day, a 12-week calendar and your recent workouts.
+- **Backup:** save all your data to a file and restore it, for example on a new phone.
 
-- **Snak:** Din ven svarer med Claude fra Anthropic. Svarene kommer frem, mens de skrives, og vennen reagerer med ansigtsudtryk (tænker, taler, glæder sig og bliver søvnig om natten).
-- **Hilsen:** Når du åbner appen efter en pause, hilser vennen på dig af sig selv.
-- **Minder:** Vennen gemmer selv vigtige ting om dig, om sig selv og om jer to. Under *Minder* kan du se dem, slette dem eller tilføje dine egne.
-- **Dagens idéer:** Hver dag får du tre forslag til, hvad I kan snakke om.
-- **Planeten:** Når du chatter og kigger forbi hver dag, samler du stjernestøv ✨. Det kan du bruge på blomster, krystaller, et fyrtårn, en raket, en måne og andet til jeres planet. Træk for at dreje planeten, og tryk på en ting for at fjerne den.
-- **Oplæsning:** Vennen kan læse sine beskeder højt (slå det til under *Indstillinger*).
-- **Sikkerhedskopi:** Du kan gemme alle data i en fil og hente dem ind igen, fx på en ny telefon.
+Listen to your body and stop if something hurts. Peppy is for fun and motivation, not medical advice.
 
-## Sådan kommer du i gang
+## Get it on your iPhone
 
-### 1. Læg appen online
+### 1. Put the app online
 
-Appen består kun af statiske filer, så den kan ligge gratis på GitHub Pages:
+The app is just static files, so it can be hosted for free on GitHub Pages:
 
-1. Gå til repoet på GitHub → **Settings** → **Pages**.
-2. Under *Build and deployment* vælger du **Deploy from a branch**, vælger grenen (fx `main`) og mappen **/ (root)** og trykker **Save**.
-3. Efter et minut ligger appen på `https://<dit-brugernavn>.github.io/<repo-navn>/`.
+1. On GitHub, open the repository → **Settings** → **Pages**.
+2. Under *Build and deployment*, choose **Deploy from a branch**, pick the branch (for example `main`) and the **/ (root)** folder, and press **Save**.
+3. After a minute the app is live at `https://<your-username>.github.io/<repo-name>/`.
 
-GitHub Pages kræver et offentligt repo, medmindre du har GitHub Pro. Koden indeholder ingen hemmeligheder, fordi API-nøglen kun gemmes på telefonen. Vil du holde repoet privat, kan du også bruge Netlify eller Cloudflare Pages, som begge kan hente et privat repo gratis.
+GitHub Pages needs a public repository unless you have GitHub Pro. The code contains no secrets. To keep the repository private, you can host it on Netlify or Cloudflare Pages instead; both can deploy a private repository for free.
 
-### 2. Installér den på din iPhone
+### 2. Install it
 
-1. Åbn adressen i **Safari**.
-2. Tryk på **Del**-knappen (firkanten med pilen).
-3. Vælg **Føj til hjemmeskærm** og tryk **Tilføj**.
+1. Open the address in **Safari**.
+2. Tap the **Share** button (the square with the arrow).
+3. Choose **Add to Home Screen** and tap **Add**.
 
-Åbn derefter Stjerneven fra hjemmeskærmen.
+Then open Peppy from your home screen.
 
-### 3. Få en Claude API-nøgle
+## Privacy
 
-1. Opret en konto på [console.anthropic.com](https://console.anthropic.com).
-2. Køb lidt kredit under **Billing**.
-3. Opret en nøgle under **API Keys** og indsæt den i appen (første gang eller under *Indstillinger*).
+Your workouts, XP and settings are stored only on your phone, in the app's own storage. Nothing is sent anywhere. If you delete the app from your home screen, its data goes too, so save a backup first (Settings → Save backup).
 
-API-kontoen er adskilt fra et eventuelt Claude.ai-abonnement.
+## Development
 
-## Pris
-
-Du betaler selv for forbruget hos Anthropic. Med standardmodellen **Claude Opus 5.5** koster en besked typisk 5-20 øre, alt efter hvor lang samtalen er. Chatter du lidt hver dag, bliver det typisk et par kroner om dagen. **Claude Sonnet 5.5** koster cirka det halve, og **Claude Haiku 5.5** koster kun en brøkdel. Du vælger model under *Indstillinger*, hvor du også kan se et anslået forbrug for måneden. Det præcise tal står på console.anthropic.com.
-
-Appen holder prisen nede ved at genbruge samtalen fra Claudes cache (prompt caching), sende højst de seneste 40-60 beskeder med og opdatere minderne for hver fjerde besked i stedet for hver gang.
-
-## Privatliv
-
-- Alle beskeder, minder og planeten gemmes kun på telefonen (i browserens lager for appen).
-- API-nøglen gemmes kun på telefonen og sendes kun direkte til `api.anthropic.com`.
-- Sikkerhedskopien indeholder ikke API-nøglen.
-- Sletter du appen fra hjemmeskærmen, forsvinder dens data også. Gem en sikkerhedskopi først.
-
-## Udvikling
-
-Der er ingen build-trin: `index.html` indlæser `js/main.js` direkte som ES-moduler.
+There is no build step: `index.html` loads `js/main.js` directly as ES modules.
 
 ```
-index.html             skærmene
-css/app.css            design og animationer
-js/main.js             navigation, chat, planet, minder og indstillinger
-js/companion.js        vennens personlighed (system-prompt), minder og dagens idéer
-js/claude.js           kald til Claude via Anthropics SDK
-js/alien.js            rumvæsenet som SVG
-js/planet.js           planeten og tingene i butikken
-js/state.js            lokal lagring
-js/speech.js           oplæsning
-sw.js                  service worker (offline og hurtig opstart)
-vendor/anthropic-sdk.js  Anthropics officielle SDK bundlet til browseren
+index.html          the screens
+css/app.css         layout and design (light and dark mode)
+css/figures.css     the buddies' moods and exercise animations
+js/main.js          onboarding, Today, workout details, Progress, Buddy and Settings
+js/player.js        the full-screen workout player
+js/figures.js       the five buddies, drawn as SVG on one shared rig, plus their gear
+js/exercises.js     exercises, workouts and difficulty levels
+js/progress.js      XP, levels, streaks and weekly numbers
+js/sound.js         beeps (Web Audio) and the voice coach
+js/state.js         local storage
+sw.js               service worker (offline use and fast start)
 ```
 
-Kør appen lokalt:
+Run it locally:
 
 ```sh
-npm run serve        # åbn http://localhost:8080
+npm run serve        # then open http://localhost:8080
 ```
 
-Andre kommandoer (kræver `npm install`):
+Rebuild the PNG icons from `icons/icon.svg` (needs `npm install`):
 
 ```sh
-npm run vendor       # genbyg vendor/anthropic-sdk.js efter en opdatering af @anthropic-ai/sdk
-npm run icons        # lav PNG-ikonerne ud fra icons/icon.svg
+npm run icons
 ```
 
-Når du udgiver en ny version, så hæv `CACHE` i `sw.js` (fx `stjerneven-v2`), så telefonen rydder gamle filer. Appen henter nye filer i baggrunden og bruger dem næste gang, den åbnes.
+All buddies share one rig (the same shoulder, hip and neck positions), so a new exercise only needs one set of keyframes in `css/figures.css` and an entry in `js/exercises.js`.
 
-`vendor/anthropic-sdk.js` er Anthropics TypeScript-SDK (`@anthropic-ai/sdk`) under Apache-2.0-licensen; se `vendor/anthropic-sdk.LICENSE.txt`.
+When you publish a new version, bump `CACHE` in `sw.js` (for example `peppy-v2`) so phones clear out old files. The app fetches new files in the background and uses them the next time it opens.

@@ -1,0 +1,628 @@
+/* Buddy rig, moods and exercise animations (see js/figures.js). */
+
+.fig { display: block; overflow: visible; }
+
+.fig .fig-shadow { fill: rgba(0, 0, 0, 0.14); transform-box: view-box; transform-origin: 100px 224px; }
+
+.fig .fig-move { transform-box: view-box; transform-origin: 100px 222px; }
+.fig .upper { transform-box: view-box; transform-origin: 100px 178px; }
+.fig .head { transform-box: view-box; transform-origin: 100px 116px; }
+.fig .arm-l { transform-box: view-box; transform-origin: 65px 118px; }
+.fig .arm-r { transform-box: view-box; transform-origin: 135px 118px; }
+.fig .leg-l { transform-box: view-box; transform-origin: 86px 168px; }
+.fig .leg-r { transform-box: view-box; transform-origin: 114px 168px; }
+.fig .cape { transform-box: view-box; transform-origin: 100px 110px; animation: cape 1.4s ease-in-out infinite; }
+
+.fig .fig-shadow,
+.fig .fig-move,
+.fig .upper,
+.fig .head,
+.fig .arm-l,
+.fig .arm-r,
+.fig .leg-l,
+.fig .leg-r {
+  animation-duration: var(--cycle, 1s);
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+.fig.paused *,
+.fig.frozen * { animation-play-state: paused !important; }
+
+.fig.frozen * { animation-delay: var(--phase, 0s) !important; }
+
+.fig.frozen .eyes-open { animation: none !important; }
+
+/* ---------- Ansigt og humør ---------- */
+
+.fig .eyes-open { transform-box: fill-box; transform-origin: center; animation: fig-blink 4.8s infinite; }
+
+.fig .bulb { animation: bulb 1.8s ease-in-out infinite; }
+
+.fig .eyes-happy,
+.fig .eyes-closed,
+.fig .eyes-strain,
+.fig .mouth-grin,
+.fig .mouth-open,
+.fig .mouth-flat,
+.fig .sweat { display: none; }
+
+.fig[data-mood="happy"] .eyes-open,
+.fig[data-mood="happy"] .mouth-smile,
+.fig[data-mood="work"] .mouth-smile,
+.fig[data-mood="strain"] .eyes-open,
+.fig[data-mood="strain"] .mouth-smile,
+.fig[data-mood="rest"] .eyes-open,
+.fig[data-mood="rest"] .mouth-smile,
+.fig[data-mood="sleepy"] .eyes-open,
+.fig[data-mood="sleepy"] .mouth-smile { display: none; }
+
+.fig[data-mood="happy"] .eyes-happy,
+.fig[data-mood="happy"] .mouth-grin,
+.fig[data-mood="work"] .mouth-open,
+.fig[data-mood="strain"] .eyes-strain,
+.fig[data-mood="strain"] .mouth-flat,
+.fig[data-mood="strain"] .sweat,
+.fig.sweaty .sweat,
+.fig[data-mood="rest"] .eyes-closed,
+.fig[data-mood="rest"] .mouth-open,
+.fig[data-mood="sleepy"] .eyes-closed,
+.fig[data-mood="sleepy"] .mouth-flat { display: inline; }
+
+.fig[data-mood="work"] .mouth-open { transform-box: fill-box; transform-origin: center; animation: huff 0.7s ease-in-out infinite alternate; }
+
+.fig[data-mood="rest"] .mouth-open { transform-box: fill-box; transform-origin: center; transform: scale(0.6); }
+
+.fig .sweat path { animation: sweat 1.3s ease-in infinite; }
+
+.fig .sweat path:nth-child(2) { animation-delay: 0.6s; }
+
+@keyframes fig-blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.1); }
+}
+
+@keyframes bulb {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes huff {
+  from { transform: scale(0.75); }
+  to { transform: scale(1.05); }
+}
+
+@keyframes sweat {
+  0% { transform: translateY(-4px); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateY(14px); opacity: 0; }
+}
+
+@keyframes cape {
+  0%, 100% { transform: skewX(0deg); }
+  50% { transform: skewX(4deg); }
+}
+
+/* ---------- Stå stille, klar, pause og fejring ---------- */
+
+.fig[data-anim="idle"] .fig-move { animation-name: idle-bob; animation-duration: 3.2s; }
+.fig[data-anim="idle"] .fig-shadow { animation-name: idle-shadow; animation-duration: 3.2s; }
+.fig[data-anim="idle"] .head { animation-name: idle-tilt; animation-duration: 6.4s; }
+.fig[data-anim="idle"] .arm-r { animation-name: idle-wave; animation-duration: 7s; }
+
+@keyframes idle-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes idle-shadow {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.92); }
+}
+
+@keyframes idle-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(4deg); }
+}
+
+@keyframes idle-wave {
+  0%, 72%, 100% { transform: rotate(0deg); }
+  77%, 85%, 93% { transform: rotate(-150deg); }
+  81%, 89% { transform: rotate(-125deg); }
+}
+
+.fig[data-anim="ready"] .fig-move { animation-name: ready-bounce; }
+.fig[data-anim="ready"] .arm-l { animation-name: ready-arm-l; }
+.fig[data-anim="ready"] .arm-r { animation-name: ready-arm-r; }
+
+@keyframes ready-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes ready-arm-l {
+  0%, 100% { transform: rotate(12deg); }
+  50% { transform: rotate(22deg); }
+}
+
+@keyframes ready-arm-r {
+  0%, 100% { transform: rotate(-12deg); }
+  50% { transform: rotate(-22deg); }
+}
+
+.fig[data-anim="rest"] .upper { animation-name: rest-breathe; animation-duration: 3.6s; }
+.fig[data-anim="rest"] .head { animation-name: idle-tilt; animation-duration: 7.2s; }
+
+@keyframes rest-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.02, 1.035); }
+}
+
+.fig[data-anim="celebrate"] .fig-move { animation-name: cele-jump; animation-duration: 0.8s; }
+.fig[data-anim="celebrate"] .fig-shadow { animation-name: jump-shadow; animation-duration: 0.8s; }
+.fig[data-anim="celebrate"] .arm-l { animation-name: cele-arm-l; animation-duration: 0.4s; }
+.fig[data-anim="celebrate"] .arm-r { animation-name: cele-arm-r; animation-duration: 0.4s; }
+
+@keyframes cele-jump {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-20px); }
+}
+
+@keyframes jump-shadow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(0.7); opacity: 0.5; }
+}
+
+@keyframes cele-arm-l {
+  0%, 100% { transform: rotate(150deg); }
+  50% { transform: rotate(170deg); }
+}
+
+@keyframes cele-arm-r {
+  0%, 100% { transform: rotate(-150deg); }
+  50% { transform: rotate(-170deg); }
+}
+
+/* ---------- Øvelser ---------- */
+
+/* Jumping jacks */
+.fig[data-anim="jumping-jacks"] .fig-move { animation-name: jj-move; }
+.fig[data-anim="jumping-jacks"] .fig-shadow { animation-name: jj-shadow; }
+.fig[data-anim="jumping-jacks"] .arm-l { animation-name: jj-arm-l; }
+.fig[data-anim="jumping-jacks"] .arm-r { animation-name: jj-arm-r; }
+.fig[data-anim="jumping-jacks"] .leg-l { animation-name: jj-leg-l; }
+.fig[data-anim="jumping-jacks"] .leg-r { animation-name: jj-leg-r; }
+
+@keyframes jj-move {
+  0%, 50%, 100% { transform: translateY(0); }
+  25%, 75% { transform: translateY(-12px); }
+}
+
+@keyframes jj-shadow {
+  0%, 50%, 100% { transform: scale(1); }
+  25%, 75% { transform: scale(0.82); }
+}
+
+@keyframes jj-arm-l {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(165deg); }
+}
+
+@keyframes jj-arm-r {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-165deg); }
+}
+
+@keyframes jj-leg-l {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(14deg); }
+}
+
+@keyframes jj-leg-r {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-14deg); }
+}
+
+/* Squats */
+.fig[data-anim="squats"] .upper { animation-name: sq-upper; }
+.fig[data-anim="squats"] .leg-l,
+.fig[data-anim="squats"] .leg-r { animation-name: sq-leg; }
+.fig[data-anim="squats"] .arm-l { animation-name: sq-arm-l; }
+.fig[data-anim="squats"] .arm-r { animation-name: sq-arm-r; }
+
+@keyframes sq-upper {
+  0%, 100% { transform: translateY(0); }
+  45%, 55% { transform: translateY(18px); }
+}
+
+@keyframes sq-leg {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  45%, 55% { transform: translateY(18px) scaleY(0.667); }
+}
+
+@keyframes sq-arm-l {
+  0%, 100% { transform: rotate(0deg); }
+  45%, 55% { transform: rotate(-75deg); }
+}
+
+@keyframes sq-arm-r {
+  0%, 100% { transform: rotate(0deg); }
+  45%, 55% { transform: rotate(75deg); }
+}
+
+/* High knees and jogging */
+.fig[data-anim="high-knees"] .fig-move { animation-name: hk-move; }
+.fig[data-anim="high-knees"] .leg-l { animation-name: hk-leg-l; }
+.fig[data-anim="high-knees"] .leg-r { animation-name: hk-leg-r; }
+.fig[data-anim="high-knees"] .arm-l { animation-name: hk-arm-l; }
+.fig[data-anim="high-knees"] .arm-r { animation-name: hk-arm-r; }
+
+@keyframes hk-move {
+  0%, 50%, 100% { transform: translateY(0); }
+  25%, 75% { transform: translateY(-5px); }
+}
+
+@keyframes hk-leg-l {
+  0%, 50%, 100% { transform: scaleY(1); }
+  25% { transform: scaleY(0.55); }
+}
+
+@keyframes hk-leg-r {
+  0%, 50%, 100% { transform: scaleY(1); }
+  75% { transform: scaleY(0.55); }
+}
+
+@keyframes hk-arm-l {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(25deg); }
+  75% { transform: rotate(-40deg); }
+}
+
+@keyframes hk-arm-r {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(40deg); }
+  75% { transform: rotate(-25deg); }
+}
+
+.fig[data-anim="jog"] .fig-move { animation-name: jog-move; }
+.fig[data-anim="jog"] .leg-l { animation-name: jog-leg-l; }
+.fig[data-anim="jog"] .leg-r { animation-name: jog-leg-r; }
+.fig[data-anim="jog"] .arm-l { animation-name: jog-arm-l; }
+.fig[data-anim="jog"] .arm-r { animation-name: jog-arm-r; }
+
+@keyframes jog-move {
+  0%, 50%, 100% { transform: translateY(0); }
+  25%, 75% { transform: translateY(-3px); }
+}
+
+@keyframes jog-leg-l {
+  0%, 50%, 100% { transform: scaleY(1); }
+  25% { transform: scaleY(0.78); }
+}
+
+@keyframes jog-leg-r {
+  0%, 50%, 100% { transform: scaleY(1); }
+  75% { transform: scaleY(0.78); }
+}
+
+@keyframes jog-arm-l {
+  0%, 100% { transform: rotate(-20deg); }
+  50% { transform: rotate(20deg); }
+}
+
+@keyframes jog-arm-r {
+  0%, 100% { transform: rotate(-20deg); }
+  50% { transform: rotate(20deg); }
+}
+
+/* Arm circles */
+.fig[data-anim="arm-circles"] .fig-move { animation-name: idle-bob; }
+.fig[data-anim="arm-circles"] .arm-l { animation-name: ac-l; animation-timing-function: linear; }
+.fig[data-anim="arm-circles"] .arm-r { animation-name: ac-r; animation-timing-function: linear; }
+
+@keyframes ac-l {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ac-r {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+/* Side lunges */
+.fig[data-anim="side-lunges"] .fig-move { animation-name: sl-move; }
+.fig[data-anim="side-lunges"] .upper { animation-name: sl-upper; }
+.fig[data-anim="side-lunges"] .leg-l { animation-name: sl-leg-l; }
+.fig[data-anim="side-lunges"] .leg-r { animation-name: sl-leg-r; }
+.fig[data-anim="side-lunges"] .arm-l { animation-name: sl-arm-l; }
+.fig[data-anim="side-lunges"] .arm-r { animation-name: sl-arm-r; }
+
+@keyframes sl-move {
+  0%, 50%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-14px); }
+  75% { transform: translateX(14px); }
+}
+
+@keyframes sl-upper {
+  0%, 50%, 100% { transform: translateY(0); }
+  25%, 75% { transform: translateY(12px); }
+}
+
+@keyframes sl-leg-l {
+  0%, 50%, 100% { transform: translateY(0) rotate(0deg) scaleY(1); }
+  25% { transform: translateY(12px) rotate(0deg) scaleY(0.78); }
+  75% { transform: translateY(12px) rotate(22deg) scaleY(0.84); }
+}
+
+@keyframes sl-leg-r {
+  0%, 50%, 100% { transform: translateY(0) rotate(0deg) scaleY(1); }
+  25% { transform: translateY(12px) rotate(-22deg) scaleY(0.84); }
+  75% { transform: translateY(12px) rotate(0deg) scaleY(0.78); }
+}
+
+@keyframes sl-arm-l {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25%, 75% { transform: rotate(-55deg); }
+}
+
+@keyframes sl-arm-r {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25%, 75% { transform: rotate(55deg); }
+}
+
+/* Torso twists */
+.fig[data-anim="torso-twists"] .upper { animation-name: tw-upper; }
+.fig[data-anim="torso-twists"] .head { animation-name: tw-head; }
+.fig[data-anim="torso-twists"] .arm-l { animation-name: tw-arm-l; }
+.fig[data-anim="torso-twists"] .arm-r { animation-name: tw-arm-r; }
+
+@keyframes tw-upper {
+  0%, 50%, 100% { transform: skewX(0deg); }
+  25% { transform: skewX(-7deg); }
+  75% { transform: skewX(7deg); }
+}
+
+@keyframes tw-head {
+  0%, 50%, 100% { transform: translateX(0); }
+  25% { transform: translateX(5px); }
+  75% { transform: translateX(-5px); }
+}
+
+@keyframes tw-arm-l {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-70deg); }
+  75% { transform: rotate(60deg); }
+}
+
+@keyframes tw-arm-r {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-60deg); }
+  75% { transform: rotate(70deg); }
+}
+
+/* Shadow boxing */
+.fig[data-anim="boxing"] .fig-move { animation-name: bx-move; }
+.fig[data-anim="boxing"] .upper { animation-name: bx-upper; }
+.fig[data-anim="boxing"] .arm-l { animation-name: bx-arm-l; }
+.fig[data-anim="boxing"] .arm-r { animation-name: bx-arm-r; }
+
+@keyframes bx-move {
+  0%, 50%, 100% { transform: translateY(0); }
+  25%, 75% { transform: translateY(-3px); }
+}
+
+@keyframes bx-upper {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(3deg); }
+  75% { transform: rotate(-3deg); }
+}
+
+@keyframes bx-arm-l {
+  0%, 50%, 100% { transform: rotate(-140deg) scaleY(0.6); }
+  25% { transform: rotate(-95deg) scaleY(1.15); }
+}
+
+@keyframes bx-arm-r {
+  0%, 50%, 100% { transform: rotate(140deg) scaleY(0.6); }
+  75% { transform: rotate(95deg) scaleY(1.15); }
+}
+
+/* Calf raises */
+.fig[data-anim="calf-raises"] .fig-move { animation-name: cr-move; }
+.fig[data-anim="calf-raises"] .fig-shadow { animation-name: cr-shadow; }
+.fig[data-anim="calf-raises"] .arm-l { animation-name: cr-arm-l; }
+.fig[data-anim="calf-raises"] .arm-r { animation-name: cr-arm-r; }
+
+@keyframes cr-move {
+  0%, 100% { transform: translateY(0); }
+  40%, 60% { transform: translateY(-9px); }
+}
+
+@keyframes cr-shadow {
+  0%, 100% { transform: scale(1); }
+  40%, 60% { transform: scale(0.9); }
+}
+
+@keyframes cr-arm-l {
+  0%, 100% { transform: rotate(14deg); }
+}
+
+@keyframes cr-arm-r {
+  0%, 100% { transform: rotate(-14deg); }
+}
+
+/* Side bends */
+.fig[data-anim="side-bends"] .upper { animation-name: sb-upper; }
+.fig[data-anim="side-bends"] .arm-l { animation-name: sb-arm-l; }
+.fig[data-anim="side-bends"] .arm-r { animation-name: sb-arm-r; }
+
+@keyframes sb-upper {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(16deg); }
+  75% { transform: rotate(-16deg); }
+}
+
+@keyframes sb-arm-l {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(165deg); }
+  75% { transform: rotate(10deg); }
+}
+
+@keyframes sb-arm-r {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(-165deg); }
+}
+
+/* Wall sit (hold with a small tremble) */
+.fig[data-anim="wall-sit"] .upper { animation-name: ws-upper; }
+.fig[data-anim="wall-sit"] .leg-l,
+.fig[data-anim="wall-sit"] .leg-r { animation-name: ws-leg; }
+.fig[data-anim="wall-sit"] .arm-l { animation-name: ws-arm-l; }
+.fig[data-anim="wall-sit"] .arm-r { animation-name: ws-arm-r; }
+
+@keyframes ws-upper {
+  0%, 100% { transform: translate(0, 18px); }
+  50% { transform: translate(0.8px, 18px); }
+}
+
+@keyframes ws-leg {
+  0%, 100% { transform: translateY(18px) scaleY(0.667); }
+}
+
+@keyframes ws-arm-l {
+  0%, 100% { transform: rotate(-75deg); }
+}
+
+@keyframes ws-arm-r {
+  0%, 100% { transform: rotate(75deg); }
+}
+
+/* Lying moves: the buddy pivots on its feet. Only the arm nearest the floor shows. */
+.fig[data-anim="plank"] .arm-l,
+.fig[data-anim="push-ups"] .arm-l,
+.fig[data-anim="mountain-climbers"] .arm-l { opacity: 0; }
+
+.fig[data-anim="plank"] .fig-shadow,
+.fig[data-anim="push-ups"] .fig-shadow,
+.fig[data-anim="mountain-climbers"] .fig-shadow { animation-name: lying-shadow; }
+
+@keyframes lying-shadow {
+  0%, 100% { transform: translateX(14px) scaleX(1.45); }
+}
+
+/* Plank */
+.fig[data-anim="plank"] .fig-move { animation-name: pl-move; }
+.fig[data-anim="plank"] .arm-r { animation-name: pl-arm; }
+.fig[data-anim="plank"] .head { animation-name: pl-head; }
+
+@keyframes pl-move {
+  0%, 100% { transform: translateX(-55px) translateY(0) rotate(62deg) scale(0.85); }
+  50% { transform: translateX(-55px) translateY(-0.7px) rotate(62deg) scale(0.85); }
+}
+
+@keyframes pl-arm {
+  0%, 100% { transform: rotate(-62deg) scaleY(0.3); }
+}
+
+@keyframes pl-head {
+  0%, 100% { transform: rotate(-25deg); }
+}
+
+/* Push-ups */
+.fig[data-anim="push-ups"] .fig-move { animation-name: pu-move; }
+.fig[data-anim="push-ups"] .arm-r { animation-name: pu-arm; }
+.fig[data-anim="push-ups"] .head { animation-name: pl-head; }
+
+@keyframes pu-move {
+  0%, 100% { transform: translateX(-55px) rotate(41deg) scale(0.85); }
+  50% { transform: translateX(-55px) rotate(60deg) scale(0.85); }
+}
+
+@keyframes pu-arm {
+  0%, 100% { transform: rotate(-41deg) scaleY(1); }
+  50% { transform: rotate(-60deg) scaleY(0.42); }
+}
+
+/* Mountain climbers */
+.fig[data-anim="mountain-climbers"] .fig-move { animation-name: mc-move; }
+.fig[data-anim="mountain-climbers"] .arm-r { animation-name: mc-arm; }
+.fig[data-anim="mountain-climbers"] .head { animation-name: pl-head; }
+.fig[data-anim="mountain-climbers"] .leg-l { animation-name: mc-leg-l; }
+.fig[data-anim="mountain-climbers"] .leg-r { animation-name: mc-leg-r; }
+
+@keyframes mc-move {
+  0%, 100% { transform: translateX(-55px) translateY(0) rotate(45deg) scale(0.85); }
+  50% { transform: translateX(-55px) translateY(-2px) rotate(45deg) scale(0.85); }
+}
+
+@keyframes mc-arm {
+  0%, 100% { transform: rotate(-45deg); }
+}
+
+@keyframes mc-leg-l {
+  0%, 50%, 100% { transform: scaleY(1); }
+  25% { transform: scaleY(0.5); }
+}
+
+@keyframes mc-leg-r {
+  0%, 50%, 100% { transform: scaleY(1); }
+  75% { transform: scaleY(0.5); }
+}
+
+/* Burpees: squat, plank, squat, jump */
+.fig[data-anim="burpees"] .fig-move { animation-name: bp-move; }
+.fig[data-anim="burpees"] .fig-shadow { animation-name: bp-shadow; }
+.fig[data-anim="burpees"] .upper { animation-name: bp-upper; }
+.fig[data-anim="burpees"] .leg-l,
+.fig[data-anim="burpees"] .leg-r { animation-name: bp-leg; }
+.fig[data-anim="burpees"] .arm-l { animation-name: bp-arm-l; }
+.fig[data-anim="burpees"] .arm-r { animation-name: bp-arm-r; }
+
+@keyframes bp-move {
+  0%, 15% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  30%, 45% { transform: translate(-55px, 0) rotate(45deg) scale(0.85); }
+  60% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  75% { transform: translate(0, -20px) rotate(0deg) scale(1); }
+  86%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+}
+
+@keyframes bp-shadow {
+  0%, 15%, 60%, 86%, 100% { transform: translateX(0) scale(1); }
+  30%, 45% { transform: translateX(14px) scale(1.45, 1); }
+  75% { transform: translateX(0) scale(0.7); }
+}
+
+@keyframes bp-upper {
+  0%, 30%, 45%, 75%, 100% { transform: translateY(0); }
+  15%, 60% { transform: translateY(18px); }
+}
+
+@keyframes bp-leg {
+  0%, 30%, 45%, 75%, 100% { transform: translateY(0) scaleY(1); }
+  15%, 60% { transform: translateY(18px) scaleY(0.667); }
+}
+
+@keyframes bp-arm-l {
+  0%, 100% { transform: rotate(0deg); opacity: 1; }
+  15%, 60% { transform: rotate(-20deg); opacity: 1; }
+  30%, 45% { transform: rotate(-45deg); opacity: 0; }
+  75% { transform: rotate(160deg); opacity: 1; }
+}
+
+@keyframes bp-arm-r {
+  0%, 100% { transform: rotate(0deg); }
+  15%, 60% { transform: rotate(20deg); }
+  30%, 45% { transform: rotate(-45deg); }
+  75% { transform: rotate(-160deg); }
+}
+
+/* Exercise demos keep moving (they show how a move is done); decoration stops. */
+@media (prefers-reduced-motion: reduce) {
+  .fig[data-anim="idle"] *,
+  .fig[data-anim="celebrate"] *,
+  .fig .sweat path,
+  .fig .bulb,
+  .fig .cape { animation: none !important; }
+}

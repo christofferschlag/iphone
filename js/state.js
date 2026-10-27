@@ -1,28 +1,24 @@
-// Al data ligger lokalt på telefonen i localStorage.
+// Everything is stored locally on the phone in localStorage.
 
-const KEY = "stjerneven.v1";
-const MAX_STORED_MESSAGES = 600;
+const KEY = "peppy.v1";
+const MAX_HISTORY = 1000;
 
 function defaults() {
   return {
     version: 1,
     onboarded: false,
-    profile: { userName: "", friendName: "Pip", color: "mint", planetName: "Lumora" },
-    settings: { apiKey: "", model: "claude-opus-5-5", speak: false },
-    // { id, role: "user" | "assistant", text, ts, event?: true, skip?: true }
-    messages: [],
-    // items: { id, kind: "user" | "friend" | "shared", text, ts }
-    memory: { items: [], processedUntil: 0 },
-    // items: { id, type, angle }
-    planet: { items: [], rotation: 0 },
-    dust: { balance: 20, earnedDay: "", earnedToday: 0, streak: 0, lastVisitDay: "" },
-    daily: { day: "", ideas: [] },
-    usage: { month: "", usd: 0, requests: 0 },
-    lastGreetingTs: 0,
+    name: "",
+    buddy: "kit",
+    buddyNames: {},
+    wear: [],
+    settings: { sound: true, voice: true, difficulty: "normal", weeklyGoal: 3, readySeconds: 10 },
+    xp: 0,
+    // { id, workout, ts, active, total, difficulty, rounds, completed, xp }
+    history: [],
   };
 }
 
-// Fletter gemte data ind i standardværdierne, så nye felter altid findes.
+// Merges saved data into the defaults so new fields always exist.
 function merge(data) {
   const base = defaults();
   if (!data || typeof data !== "object") return base;
@@ -40,7 +36,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) return merge(JSON.parse(raw));
   } catch (err) {
-    console.warn("Kunne ikke læse gemte data", err);
+    console.warn("Could not read saved data", err);
   }
   return defaults();
 }
@@ -56,38 +52,23 @@ export function save() {
 
 export function saveNow() {
   clearTimeout(timer);
-  if (state.messages.length > MAX_STORED_MESSAGES) {
-    state.messages = state.messages.slice(-(MAX_STORED_MESSAGES - 100));
-  }
+  if (state.history.length > MAX_HISTORY) state.history = state.history.slice(-MAX_HISTORY);
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch (err) {
-    // Lageret er fuldt: behold kun de nyeste beskeder og prøv igen.
-    console.warn("Lageret er fuldt", err);
-    state.messages = state.messages.slice(-150);
-    try {
-      localStorage.setItem(KEY, JSON.stringify(state));
-    } catch {
-      /* opgiv stille */
-    }
+    console.warn("Could not save", err);
   }
 }
 
-// Erstatter alt med importerede data, men beholder den nuværende API-nøgle.
 export function replaceState(data) {
-  const apiKey = state.settings.apiKey;
   const next = merge(data);
   for (const key of Object.keys(state)) delete state[key];
   Object.assign(state, next);
-  if (!state.settings.apiKey) state.settings.apiKey = apiKey;
   saveNow();
 }
 
 export function exportState() {
-  const copy = JSON.parse(JSON.stringify(state));
-  copy.settings.apiKey = "";
-  copy.exportedAt = new Date().toISOString();
-  return copy;
+  return { ...JSON.parse(JSON.stringify(state)), exportedAt: new Date().toISOString() };
 }
 
 export function resetState() {
@@ -99,14 +80,11 @@ export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// Lokal dato som "2026-10-27".
+// Local date as "2026-10-27".
 export function dayKey(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-export function monthKey(date = new Date()) {
-  return dayKey(date).slice(0, 7);
+  const d = new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }

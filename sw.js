@@ -1,21 +1,21 @@
-// Service worker: gemmer appens filer, så den åbner hurtigt og også uden net.
-// Hæv versionen ved hver ny udgivelse, så gamle filer ryddes op.
-const CACHE = "stjerneven-v1";
+// Service worker: caches the app's files so it starts fast and works offline.
+// Bump CACHE with every release so old files are cleaned up.
+const CACHE = "peppy-v1";
 
 const FILES = [
   "./",
   "index.html",
   "manifest.webmanifest",
   "css/app.css",
+  "css/figures.css",
   "js/main.js",
   "js/state.js",
-  "js/alien.js",
-  "js/planet.js",
-  "js/companion.js",
-  "js/claude.js",
-  "js/speech.js",
+  "js/figures.js",
+  "js/exercises.js",
+  "js/progress.js",
+  "js/player.js",
+  "js/sound.js",
   "js/ui.js",
-  "vendor/anthropic-sdk.js",
   "icons/icon.svg",
   "icons/apple-touch-icon.png",
   "icons/icon-192.png",
@@ -36,8 +36,8 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Svar straks fra cachen og hent en frisk kopi i baggrunden ("stale-while-revalidate").
-// Kald til andre domæner (fx api.anthropic.com) røres ikke.
+// Answer from the cache straight away and fetch a fresh copy in the background
+// ("stale-while-revalidate"). Requests to other sites are left alone.
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;

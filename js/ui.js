@@ -1,4 +1,4 @@
-// Små hjælpere til DOM, beskeder og dialoger.
+// Small helpers for DOM, dialogs and formatting.
 
 export const $ = (selector, root = document) => root.querySelector(selector);
 
@@ -11,14 +11,6 @@ export function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
-// Viser **fed** og *kursiv* (fx *vifter med antennerne*) og linjeskift.
-export function formatMessage(text) {
-  return escapeHtml(text)
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(?!\s)(.+?)\*/g, "<em>$1</em>")
-    .replace(/\n/g, "<br>");
-}
-
 let toastTimer = 0;
 
 export function toast(text, ms = 2600) {
@@ -29,27 +21,29 @@ export function toast(text, ms = 2600) {
   toastTimer = setTimeout(() => el.classList.remove("show"), ms);
 }
 
-// Viser et ark nederst på skærmen med knapper. Returnerer værdien af den
-// valgte knap eller null, hvis arket lukkes.
-export function sheet({ title, text = "", buttons }) {
+// A sheet that slides up from the bottom. html is trusted markup built by
+// the app; title, text and button labels are escaped. Resolves with the
+// value of the tapped button, or null when the sheet is dismissed.
+export function sheet({ title, text = "", html = "", buttons = [] }) {
   const dialog = $("#sheet");
   dialog.innerHTML = `
     <form method="dialog" class="sheet-body">
       <h2>${escapeHtml(title)}</h2>
       ${text ? `<p>${escapeHtml(text)}</p>` : ""}
+      ${html}
       <div class="sheet-buttons">
         ${buttons
-          .map(
-            (b) =>
-              `<button value="${escapeHtml(b.value)}" class="btn ${b.kind || ""}">${escapeHtml(b.label)}</button>`,
-          )
+          .map((b) => `<button value="${escapeHtml(b.value)}" class="btn ${b.kind || ""}">${escapeHtml(b.label)}</button>`)
           .join("")}
       </div>
     </form>`;
   return new Promise((resolve) => {
     dialog.addEventListener(
       "close",
-      () => resolve(dialog.returnValue && dialog.returnValue !== "cancel" ? dialog.returnValue : null),
+      () => {
+        resolve(dialog.returnValue && dialog.returnValue !== "cancel" ? dialog.returnValue : null);
+        dialog.innerHTML = "";
+      },
       { once: true },
     );
     dialog.returnValue = "";
@@ -63,32 +57,28 @@ export async function confirmSheet(title, text, okLabel = "OK", kind = "primary"
     text,
     buttons: [
       { value: "ok", label: okLabel, kind },
-      { value: "cancel", label: "Annullér", kind: "ghost" },
+      { value: "cancel", label: "Cancel", kind: "ghost" },
     ],
   });
   return answer === "ok";
 }
 
-const usdFormat = new Intl.NumberFormat("da-DK", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+const longDate = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
+const shortDate = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const monthName = new Intl.DateTimeFormat("en-GB", { month: "short" });
+const timeOfDay = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-export function formatUSD(value) {
-  return usdFormat.format(value);
-}
+export const formatLongDate = (date) => longDate.format(date);
+export const formatShortDate = (date) => shortDate.format(date);
+export const formatMonth = (date) => monthName.format(date);
+export const formatTime = (date) => timeOfDay.format(date);
 
-const dayFormat = new Intl.DateTimeFormat("da-DK", { weekday: "long", day: "numeric", month: "long" });
-const timeFormat = new Intl.DateTimeFormat("da-DK", { hour: "2-digit", minute: "2-digit" });
-
-export function dayLabel(ts) {
+export function relativeDay(ts) {
   const date = new Date(ts);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return "I dag";
-  if (date.toDateString() === yesterday.toDateString()) return "I går";
-  const label = dayFormat.format(date);
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-export function timeLabel(ts) {
-  return timeFormat.format(new Date(ts));
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return shortDate.format(date);
 }

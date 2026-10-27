@@ -1,17 +1,14 @@
 {
-  "name": "stjerneven",
+  "name": "peppy",
   "version": "1.0.0",
   "private": true,
-  "description": "Stjerneven – en lille alien-ven til iPhone (PWA) drevet af Claude",
+  "description": "Peppy – home workouts with a buddy (PWA for iPhone)",
   "type": "module",
   "scripts": {
-    "vendor": "esbuild tools/anthropic-entry.js --bundle --format=esm --platform=browser --target=safari16 --minify --legal-comments=eof \"--banner:js=/*! Browser-bundle af @anthropic-ai/sdk (version: se package.json). Copyright 2023 Anthropic, PBC. Apache-2.0 – se anthropic-sdk.LICENSE.txt */\" --outfile=vendor/anthropic-sdk.js && cp node_modules/@anthropic-ai/sdk/LICENSE vendor/anthropic-sdk.LICENSE.txt",
     "icons": "node tools/make-icons.mjs",
     "serve": "python3 -m http.server 8080"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "1.3.0",
-    "@resvg/resvg-js": "2.6.2",
-    "esbuild": "0.28.2"
+    "@resvg/resvg-js": "2.6.2"
   }
 }

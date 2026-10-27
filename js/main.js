@@ -1,734 +1,602 @@
-import { state, save, saveNow, uid, dayKey, monthKey, replaceState, exportState, resetState } from "./state.js";
-import { alienSVG, PALETTES, palette, setMood, wiggle } from "./alien.js";
-import { streamReply, describeError, MODELS, verifyKey } from "./claude.js";
+import { state, save, saveNow, uid, dayKey, replaceState, exportState, resetState } from "./state.js";
+import { FIGURES, ACCESSORIES, figureById, figureSVG, pose } from "./figures.js";
+import { EXERCISES, WORKOUTS, DIFFICULTIES, workoutById, buildSegments, totalSeconds, formatDuration } from "./exercises.js";
 import {
-  systemPrompt,
-  apiMessages,
-  addMessage,
-  addEvent,
-  greetingEvent,
-  recordUsage,
-  updateMemories,
-  refreshDailyIdeas,
-  useIdea,
-  addManualMemory,
-  removeMemory,
-} from "./companion.js";
-import { ITEMS, itemById, itemPhrase, itemPreview, findFreeAngle, planetSVG } from "./planet.js";
-import { speak, unlockSpeech, speechSupported, stopSpeaking } from "./speech.js";
-import { $, escapeHtml, formatMessage, toast, sheet, confirmSheet, formatUSD, dayLabel } from "./ui.js";
+  levelInfo,
+  trainedDays,
+  currentStreak,
+  bestStreak,
+  thisWeek,
+  workoutsThisWeek,
+  calendar,
+  totals,
+  sessionXP,
+} from "./progress.js";
+import { startWorkout, isRunning } from "./player.js";
+import { beep, say, unlockAudio } from "./sound.js";
+import {
+  $,
+  escapeHtml,
+  toast,
+  sheet,
+  confirmSheet,
+  formatLongDate,
+  formatShortDate,
+  formatMonth,
+  relativeDay,
+} from "./ui.js";
 
-const GREETING_GAP_MS = 3 * 60 * 60 * 1000;
-const MEMORY_STALE_MS = 30 * 60 * 1000;
-const DUST_PER_MESSAGE = 3;
-const DUST_DAILY_CAP = 60;
-const NAME_SUGGESTIONS = ["Pip", "Lumi", "Zibo", "Nuka", "Momo", "Bibbi"];
-const POKES = ["Hihi, det kilder!", "Bip bop! 👋", "Hej med dig!", "Det var min antenne!", "Jeg er her skam!", "Klar til at snakke?"];
+const DAY_MS = 86400000;
+const WEEKDAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 
-let busy = false;
-let streamingText = null; // teksten i det svar, der er ved at blive skrevet
-let stageColor = "";
+let currentView = "today";
+let detail = null; // { id, difficulty, rounds } for the open workout
 
-const friend = () => state.profile.friendName || "Pip";
-const user = () => state.profile.userName || "dig";
+const buddyName = (id = state.buddy) => state.buddyNames[id] || figureById(id).name;
+const level = () => levelInfo(state.xp).level;
+const wearing = () => state.wear.filter((id) => (ACCESSORIES.find((a) => a.id === id)?.level ?? 99) <= level());
+const dayIndex = () => Math.floor(new Date(`${dayKey()}T12:00:00`).getTime() / DAY_MS);
 
-// ---------- Tema, stjernehimmel og skærmhøjde ----------
-
-function applyTheme(color = state.profile.color) {
-  const p = palette(color);
-  const root = document.documentElement.style;
-  root.setProperty("--accent", p.body);
-  root.setProperty("--accent-light", p.light);
-  root.setProperty("--accent-dark", p.dark);
-  root.setProperty("--accent-ink", p.ink);
-}
-
-function buildSky() {
-  let seed = 11;
-  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  let html = "";
-  for (let i = 0; i < 90; i++) {
-    const size = (rand() * 1.8 + 0.6).toFixed(1);
-    html += `<i class="star${rand() > 0.6 ? " twinkle" : ""}" style="left:${(rand() * 100).toFixed(2)}%;top:${(
-      rand() * 100
-    ).toFixed(2)}%;width:${size}px;height:${size}px;opacity:${(rand() * 0.6 + 0.25).toFixed(2)};animation-delay:${(
-      rand() * 6
-    ).toFixed(1)}s"></i>`;
-  }
-  $(".sky").innerHTML = `${html}<i class="shooting-star"></i>`;
-}
-
-// På iOS skrumper kun det synlige område, når tastaturet kommer frem.
-function syncViewport() {
-  const vv = window.visualViewport;
-  document.documentElement.style.setProperty("--app-height", `${vv ? vv.height : window.innerHeight}px`);
-  if (vv && vv.offsetTop > 0) window.scrollTo(0, 0);
+function workoutLength(workout, difficulty = state.settings.difficulty, rounds = workout.rounds) {
+  return totalSeconds(buildSegments(workout, { difficulty, rounds, readySeconds: state.settings.readySeconds }));
 }
 
 // ---------- Navigation ----------
 
 function showView(name) {
+  currentView = name;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${name}`));
+  const tab = name === "workout" ? "today" : name;
   document.querySelectorAll("#tabbar button").forEach((b) => {
-    b.setAttribute("aria-current", b.dataset.view === name ? "page" : "false");
+    b.setAttribute("aria-current", b.dataset.view === tab ? "page" : "false");
   });
   $("#tabbar").hidden = name === "onboarding";
-  if (name === "chat") {
-    renderChat();
-    scrollToBottom(true);
-  }
-  if (name === "planet") renderPlanet();
-  if (name === "memories") renderMemories();
-  if (name === "settings") renderSettings();
+  const render = {
+    onboarding: renderOnboarding,
+    today: renderToday,
+    workout: renderWorkout,
+    progress: renderProgress,
+    buddy: renderBuddy,
+    settings: renderSettings,
+  }[name];
+  render?.();
+  $(`#view-${name} .scroll`)?.scrollTo(0, 0);
 }
 
-// ---------- Velkomst ----------
+// ---------- Onboarding ----------
 
-let step = 0;
-const draft = { userName: "", friendName: "", color: "mint" };
-
-function swatchesHTML(selected, name) {
-  return Object.entries(PALETTES)
-    .map(
-      ([id, p]) => `<label class="swatch" style="--sw:${p.body}" title="${p.label}">
-        <input type="radio" name="${name}" value="${id}" ${id === selected ? "checked" : ""} aria-label="${p.label}">
-        <span></span></label>`,
-    )
-    .join("");
-}
+const ob = { step: 0, buddy: "kit", name: "", buddyName: "", goal: 3, difficulty: "normal" };
 
 function renderOnboarding() {
+  const fig = figureById(ob.buddy);
   const view = $("#view-onboarding");
-  const friendName = escapeHtml(draft.friendName || "din ven");
-  const screens = [
-    () => `
-      <div class="ob-alien">${alienSVG({ color: draft.color, label: "Et lille rumvæsen" })}</div>
-      <h1>Hej, jordbo!</h1>
-      <p>Langt ude i rummet sidder et lille væsen og kigger ned på Jorden. Det leder efter en ven.</p>
-      <button class="btn primary big" type="button" data-action="next">Sig hej 👋</button>`,
-    () => `
-      <form class="ob-form" data-step="name">
-        <div class="ob-alien small">${alienSVG({ color: draft.color, mood: "listening" })}</div>
-        <h1>Hvad hedder du?</h1>
-        <input name="userName" maxlength="40" required autocomplete="given-name" placeholder="Dit navn" value="${escapeHtml(draft.userName)}">
-        <button class="btn primary big">Videre</button>
-      </form>`,
-    () => `
-      <form class="ob-form" data-step="friend">
-        <div class="ob-alien" id="ob-preview">${alienSVG({ color: draft.color, mood: "happy" })}</div>
-        <h1>Din nye ven</h1>
-        <p>Hvad skal den hedde, og hvilken farve har den?</p>
-        <input name="friendName" maxlength="24" required placeholder="Fx Pip" value="${escapeHtml(draft.friendName)}">
-        <div class="chips">${NAME_SUGGESTIONS.map((n) => `<button type="button" class="chip" data-name="${n}">${n}</button>`).join("")}</div>
-        <div class="swatches">${swatchesHTML(draft.color, "color")}</div>
-        <button class="btn primary big">Videre</button>
-      </form>`,
-    () => `
-      <form class="ob-form" data-step="key">
-        <div class="ob-alien small">${alienSVG({ color: draft.color })}</div>
-        <h1>Giv ${friendName} en stemme</h1>
-        <p>${friendName} tænker med Claude fra Anthropic. Indsæt din egen API-nøgle. Den gemmes kun på denne telefon.</p>
-        <input name="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <p class="hint">Opret en nøgle på <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Du betaler selv for forbruget hos Anthropic: ca. 5-20 øre pr. besked med Opus og langt mindre med Haiku.</p>
-        <button class="btn primary big">Start</button>
-        <button class="btn ghost" type="button" data-action="skip-key">Spring over</button>
-      </form>`,
-  ];
-  view.innerHTML = `<div class="onboarding">
-    <div class="ob-dots">${screens.map((_, i) => `<span class="${i === step ? "on" : ""}"></span>`).join("")}</div>
-    ${screens[step]()}</div>`;
-  view.querySelector("input:not([type=radio])")?.focus({ preventScroll: true });
-}
-
-function finishOnboarding(apiKey) {
-  Object.assign(state.profile, {
-    userName: draft.userName,
-    friendName: draft.friendName,
-    color: draft.color,
-  });
-  state.settings.apiKey = apiKey.trim();
-  state.onboarded = true;
-  saveNow();
-  applyTheme();
-  showView("chat");
-  onAppVisible();
+  const dots = `<div class="ob-dots">${[0, 1, 2].map((i) => `<span class="${i === ob.step ? "on" : ""}"></span>`).join("")}</div>`;
+  if (ob.step === 0) {
+    view.innerHTML = `<div class="ob">
+      ${dots}
+      <h1>Meet your workout buddy</h1>
+      <p class="muted">Pick a friend who trains with you and cheers you on.</p>
+      <div class="ob-hero">${figureSVG(ob.buddy, { anim: "ready", cycle: 0.6, mood: "happy" })}</div>
+      <div class="ob-who"><b>${fig.name}</b> the ${fig.species.toLowerCase()}</div>
+      <p class="muted ob-blurb">${fig.blurb}</p>
+      <div class="ob-picker" role="radiogroup" aria-label="Buddies">${FIGURES.map(
+        (f) => `<button type="button" role="radio" aria-checked="${f.id === ob.buddy}" aria-label="${f.name} the ${f.species}" data-pick="${f.id}">
+          ${figureSVG(f.id, { anim: "idle", phase: 0, cycle: 3.2 })}</button>`,
+      ).join("")}</div>
+      <button class="btn primary big" type="button" data-next>Choose ${fig.name}</button>
+    </div>`;
+  } else if (ob.step === 1) {
+    view.innerHTML = `<form class="ob" data-step="names">
+      ${dots}
+      <div class="ob-hero small">${figureSVG(ob.buddy, { anim: "idle", cycle: 3.2 })}</div>
+      <h1>Nice to meet you!</h1>
+      <label class="field">What's your name?
+        <input name="name" maxlength="30" autocomplete="given-name" placeholder="Your name" value="${escapeHtml(ob.name)}">
+      </label>
+      <label class="field">Your buddy's name
+        <input name="buddyName" maxlength="16" required value="${escapeHtml(ob.buddyName || fig.name)}">
+      </label>
+      <button class="btn primary big">Next</button>
+    </form>`;
+  } else {
+    view.innerHTML = `<form class="ob" data-step="goal">
+      ${dots}
+      <div class="ob-hero small">${figureSVG(ob.buddy, { anim: "jumping-jacks", cycle: 0.9, mood: "work" })}</div>
+      <h1>Your weekly goal</h1>
+      <p class="muted">How many workouts a week? Most people start with 3.</p>
+      <div class="goal-picker" role="radiogroup" aria-label="Workouts per week">${[1, 2, 3, 4, 5, 6, 7]
+        .map((n) => `<button type="button" role="radio" aria-checked="${n === ob.goal}" data-goal="${n}">${n}</button>`)
+        .join("")}</div>
+      <div class="field-label">How fit do you feel?</div>
+      ${segmented("ob-difficulty", Object.entries(DIFFICULTIES).map(([id, d]) => [id, d.label]), ob.difficulty)}
+      <p class="muted small">You can change this for each workout.</p>
+      <button class="btn primary big">Let's go!</button>
+    </form>`;
+  }
 }
 
 function bindOnboarding() {
   const view = $("#view-onboarding");
   view.addEventListener("click", (e) => {
-    const action = e.target.closest("[data-action]")?.dataset.action;
-    if (action === "next") {
-      step = 1;
+    const picked = e.target.closest("[data-pick]")?.dataset.pick;
+    if (picked) {
+      ob.buddy = picked;
+      ob.buddyName = "";
       renderOnboarding();
-    } else if (action === "skip-key") {
-      finishOnboarding("");
+      return;
     }
-    const name = e.target.closest("[data-name]")?.dataset.name;
-    if (name) view.querySelector("input[name=friendName]").value = name;
-  });
-  view.addEventListener("change", (e) => {
-    if (e.target.name !== "color") return;
-    draft.color = e.target.value;
-    applyTheme(draft.color);
-    $("#ob-preview").innerHTML = alienSVG({ color: draft.color, mood: "happy" });
+    if (e.target.closest("[data-next]")) {
+      ob.step = 1;
+      renderOnboarding();
+      return;
+    }
+    const goal = e.target.closest("[data-goal]")?.dataset.goal;
+    if (goal) {
+      ob.goal = Number(goal);
+      view.querySelectorAll("[data-goal]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.goal === goal)));
+    }
+    const choice = e.target.closest("[data-seg='ob-difficulty']");
+    if (choice) {
+      ob.difficulty = choice.dataset.value;
+      selectSegment(choice);
+    }
   });
   view.addEventListener("submit", (e) => {
     e.preventDefault();
-    const form = e.target;
-    const data = new FormData(form);
-    if (form.dataset.step === "name") {
-      draft.userName = String(data.get("userName")).trim();
-      step = 2;
-    } else if (form.dataset.step === "friend") {
-      draft.friendName = String(data.get("friendName")).trim();
-      draft.color = String(data.get("color") || draft.color);
-      step = 3;
-    } else if (form.dataset.step === "key") {
-      finishOnboarding(String(data.get("apiKey")));
+    const data = new FormData(e.target);
+    if (e.target.dataset.step === "names") {
+      ob.name = String(data.get("name") || "").trim();
+      ob.buddyName = String(data.get("buddyName") || "").trim();
+      ob.step = 2;
+      renderOnboarding();
       return;
     }
-    renderOnboarding();
+    state.name = ob.name;
+    state.buddy = ob.buddy;
+    if (ob.buddyName && ob.buddyName !== figureById(ob.buddy).name) state.buddyNames[ob.buddy] = ob.buddyName;
+    state.settings.weeklyGoal = ob.goal;
+    state.settings.difficulty = ob.difficulty;
+    state.onboarded = true;
+    saveNow();
+    showView("today");
   });
 }
 
-// ---------- Chat ----------
+// ---------- Shared bits ----------
 
-function setStatus(kind) {
-  const text = {
-    idle: `fra planeten ${state.profile.planetName}`,
-    thinking: "tænker …",
-    talking: "skriver …",
-  }[kind];
-  $("#chat-status").textContent = text;
+function segmented(name, options, selected) {
+  return `<div class="segmented" role="radiogroup">${options
+    .map(
+      ([value, label]) =>
+        `<button type="button" role="radio" data-seg="${name}" data-value="${value}" aria-checked="${value === selected}">${label}</button>`,
+    )
+    .join("")}</div>`;
 }
 
-function restingMood() {
+function selectSegment(button) {
+  button.parentElement.querySelectorAll("[role=radio]").forEach((b) => b.setAttribute("aria-checked", String(b === button)));
+}
+
+function workoutCard(w) {
+  return `<button type="button" class="wcard" data-open="${w.id}">
+    <span class="wcard-emoji" aria-hidden="true">${w.emoji}</span>
+    <span class="wcard-body">
+      <span class="wcard-name">${escapeHtml(w.name)}</span>
+      <span class="wcard-meta">${formatDuration(workoutLength(w))} · ${w.moves.length * w.rounds} moves</span>
+    </span>
+    <span class="wcard-go" aria-hidden="true">›</span>
+  </button>`;
+}
+
+// ---------- Today ----------
+
+function todaysPick() {
+  if (!state.history.length) return workoutById("wake-up");
+  const recent = new Set(state.history.filter((s) => Date.now() - s.ts < 2 * DAY_MS).map((s) => s.workout));
+  for (let i = 0; i < WORKOUTS.length; i++) {
+    const w = WORKOUTS[(dayIndex() + i) % WORKOUTS.length];
+    if (!recent.has(w.id)) return w;
+  }
+  return WORKOUTS[dayIndex() % WORKOUTS.length];
+}
+
+function buddyLine() {
+  const fig = figureById(state.buddy);
+  const hello = state.name ? ` ${state.name}` : "";
+  const choose = (lines) => lines[dayIndex() % lines.length];
+  if (!state.history.length) {
+    return { mood: "happy", line: `Hi${hello}! I'm ${buddyName()}. Shall we start with something easy?` };
+  }
+  if (trainedDays(state.history).has(dayKey())) {
+    return {
+      mood: "happy",
+      line: choose([`We trained today! ${fig.cheers[0]}`, "Workout done. I'm so proud of you!", "Look at you go! See you tomorrow?"]),
+    };
+  }
+  const daysSince = (Date.now() - state.history.at(-1).ts) / DAY_MS;
+  if (daysSince >= 3) return { mood: "sleepy", line: `I missed you${hello}… shall we move a little today?` };
   const hour = new Date().getHours();
-  return hour >= 23 || hour < 6 ? "sleepy" : "idle";
+  if (hour < 5 || hour >= 22) return { mood: "sleepy", line: "It's late… a gentle Desk Break, maybe?" };
+  if (hour < 11) return { mood: "idle", line: `Good morning${hello}! A quick workout to wake up?` };
+  if (hour < 17) return { mood: "idle", line: "Ready for a little workout? I am!" };
+  return { mood: "idle", line: "Evening! Something sweaty or something calm?" };
 }
 
-function renderStage() {
-  if (stageColor === `${state.profile.color}|${friend()}`) return;
-  stageColor = `${state.profile.color}|${friend()}`;
-  $("#stage-alien").innerHTML = alienSVG({ color: state.profile.color, label: friend(), mood: restingMood() });
-}
-
-function messageHTML(m) {
-  if (m.event) return m.note ? `<div class="msg notice">${escapeHtml(m.note)}</div>` : "";
-  const cls = m.role === "user" ? "me" : "friend";
-  return `<div class="msg ${cls}${m.skip ? " skipped" : ""}" data-id="${m.id}">${formatMessage(m.text)}</div>`;
-}
-
-function renderChat() {
-  $("#chat-name").textContent = friend();
-  $("#input").placeholder = `Skriv til ${friend()} …`;
-  if (!busy) setStatus("idle");
-  renderStage();
-  updateDust();
-  let html = "";
-  let lastDay = "";
-  for (const m of state.messages) {
-    const piece = messageHTML(m);
-    if (!piece) continue;
-    const day = dayLabel(m.ts);
-    if (day !== lastDay) {
-      html += `<div class="day-sep">${day}</div>`;
-      lastDay = day;
-    }
-    html += piece;
-  }
-  if (streamingText !== null) {
-    html += streamingText
-      ? `<div class="msg friend" id="pending">${formatMessage(streamingText)}</div>`
-      : `<div class="msg friend typing" id="pending"><span></span><span></span><span></span></div>`;
-  } else if (!state.messages.some((m) => !m.event || m.note)) {
-    html += `<div class="msg notice" id="hello-hint">Sig hej til ${escapeHtml(friend())} 👋</div>`;
-  }
-  $("#messages").innerHTML = html;
-  if (!state.settings.apiKey) showNotice(`${friend()} mangler en API-nøgle for at kunne svare.`, "Indstillinger", () => showView("settings"));
-  renderIdeas();
-}
-
-function nearBottom() {
-  const el = $("#messages");
-  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-}
-
-function scrollToBottom(force = false) {
-  const el = $("#messages");
-  if (force || nearBottom()) el.scrollTop = el.scrollHeight;
-}
-
-function appendHTML(html) {
-  $("#hello-hint")?.remove();
-  const stick = nearBottom();
-  $("#messages").insertAdjacentHTML("beforeend", html);
-  if (stick) scrollToBottom(true);
-}
-
-function showNotice(text, buttonLabel, onClick) {
-  const id = `n${uid()}`;
-  appendHTML(`<div class="msg notice error" id="${id}">${escapeHtml(text)}${
-    buttonLabel ? ` <button type="button" class="link">${escapeHtml(buttonLabel)}</button>` : ""
-  }</div>`);
-  if (onClick) $(`#${id} button`).addEventListener("click", onClick);
-}
-
-function renderIdeas() {
-  const show = state.daily.ideas.length && !busy && !$("#input").value.trim();
-  $("#ideas").innerHTML = show
-    ? state.daily.ideas.map((idea) => `<button type="button" class="chip" data-idea="${escapeHtml(idea)}">${escapeHtml(idea)}</button>`).join("")
-    : "";
-}
-
-function setBusy(value) {
-  busy = value;
-  $("#send").disabled = value;
-  renderIdeas();
-}
-
-function earnDust(amount) {
-  const d = state.dust;
-  const today = dayKey();
-  if (d.earnedDay !== today) {
-    d.earnedDay = today;
-    d.earnedToday = 0;
-  }
-  const gain = Math.min(amount, DUST_DAILY_CAP - d.earnedToday);
-  if (gain <= 0) return;
-  d.earnedToday += gain;
-  d.balance += gain;
-  save();
-  updateDust();
-  const pill = $("#chat-dust");
-  const float = document.createElement("span");
-  float.className = "dust-float";
-  float.textContent = `+${gain}`;
-  pill.append(float);
-  setTimeout(() => float.remove(), 1200);
-}
-
-function updateDust() {
-  document.querySelectorAll(".dust-count").forEach((el) => {
-    el.textContent = state.dust.balance;
-  });
-}
-
-function checkDailyBonus() {
-  const d = state.dust;
-  const today = dayKey();
-  if (d.lastVisitDay === today) return;
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  d.streak = d.lastVisitDay === dayKey(yesterday) ? d.streak + 1 : 1;
-  d.lastVisitDay = today;
-  const bonus = 10 + 2 * Math.min(d.streak, 7);
-  d.balance += bonus;
-  save();
-  updateDust();
-  toast(d.streak > 1 ? `✨ +${bonus} stjernestøv – dag ${d.streak} i træk!` : `✨ +${bonus} stjernestøv for at kigge forbi!`);
-}
-
-// Markerer ubesvarede beskeder, så de ikke sendes igen (fx efter en afvisning).
-function skipUnanswered() {
-  for (let i = state.messages.length - 1; i >= 0 && state.messages[i].role === "user"; i--) {
-    state.messages[i].skip = true;
-  }
-  save();
-}
-
-async function requestReply() {
-  const messages = apiMessages();
-  if (busy || !state.settings.apiKey || messages.at(-1)?.role !== "user") return;
-  setBusy(true);
-  const stage = $("#stage-alien");
-  setMood(stage, "thinking");
-  setStatus("thinking");
-  appendHTML(`<div class="msg friend typing" id="pending"><span></span><span></span><span></span></div>`);
-
-  let text = "";
-  let frame = 0;
-  streamingText = "";
-  const paint = () => {
-    frame = 0;
-    const el = $("#pending");
-    if (!el) return;
-    el.classList.remove("typing");
-    el.innerHTML = formatMessage(text);
-    scrollToBottom();
-  };
-
-  try {
-    const { message, text: finalText } = await streamReply({
-      apiKey: state.settings.apiKey,
-      model: state.settings.model,
-      system: systemPrompt(),
-      messages,
-      onText: (delta) => {
-        if (!text) {
-          setMood(stage, "talking");
-          setStatus("talking");
-        }
-        text += delta;
-        streamingText = text;
-        frame ||= requestAnimationFrame(paint);
-      },
-    });
-    recordUsage(message);
-    cancelAnimationFrame(frame);
-    streamingText = null;
-    $("#pending")?.remove();
-    if (message.stop_reason === "refusal") {
-      skipUnanswered();
-      renderChat();
-      showNotice(`${friend()} kan ikke svare på det. Prøv at skrive noget andet.`);
-      return;
-    }
-    const reply = (finalText || text).trim();
-    if (!reply) {
-      showNotice(`${friend()} fandt ikke på noget at sige.`, "Prøv igen", (e) => {
-        e.target.closest(".msg").remove();
-        requestReply();
-      });
-      return;
-    }
-    const stored = addMessage("assistant", message.stop_reason === "max_tokens" ? `${reply} …` : reply);
-    appendHTML(messageHTML(stored));
-    if (state.settings.speak) speak(reply);
-    setMood(stage, "happy");
-    setTimeout(() => !busy && setMood(stage, restingMood()), 1400);
-    updateMemories()
-      .then((added) => added > 0 && toast(`✨ ${friend()} husker det`))
-      .catch((err) => console.warn("Kunne ikke opdatere minder", err));
-  } catch (err) {
-    cancelAnimationFrame(frame);
-    streamingText = null;
-    $("#pending")?.remove();
-    const reason = describeError(err);
-    if (reason) showNotice(reason, "Prøv igen", (e) => {
-      e.target.closest(".msg").remove();
-      requestReply();
-    });
-    console.warn(err);
-  } finally {
-    setBusy(false);
-    setStatus("idle");
-    if ($("#stage-alien svg")?.dataset.mood !== "happy") setMood(stage, restingMood());
-  }
-}
-
-async function sendText(raw) {
-  const text = raw.trim();
-  if (!text || busy) return;
-  if (!state.settings.apiKey) {
-    showNotice(`Tilføj din API-nøgle, så ${friend()} kan svare.`, "Indstillinger", () => showView("settings"));
-    return;
-  }
-  if (state.settings.speak) unlockSpeech();
-  const input = $("#input");
-  input.value = "";
-  autosize(input);
-  const message = addMessage("user", text);
-  appendHTML(messageHTML(message));
-  scrollToBottom(true);
-  earnDust(DUST_PER_MESSAGE);
-  await requestReply();
-}
-
-async function maybeGreet() {
-  if (!state.onboarded || busy || !state.settings.apiKey) return;
-  const last = state.messages.at(-1);
-  // En hilsen, der ikke blev besvaret sidst, prøves igen i stedet for at lave en ny.
-  if (last?.event && last.role === "user" && !last.note && !last.skip) {
-    await requestReply();
-    return;
-  }
-  const hasChatted = state.messages.some((m) => m.role === "assistant");
-  const lastActivity = Math.max(last?.ts || 0, state.lastGreetingTs);
-  if (hasChatted && Date.now() - lastActivity < GREETING_GAP_MS) return;
-  state.lastGreetingTs = Date.now();
-  addEvent(greetingEvent());
-  await requestReply();
-}
-
-function autosize(textarea) {
-  textarea.style.height = "auto";
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 132)}px`;
+function renderToday() {
+  const lv = levelInfo(state.xp);
+  const streak = currentStreak(state.history);
+  const goal = state.settings.weeklyGoal;
+  const done = workoutsThisWeek(state.history);
+  const pick = todaysPick();
+  const { mood, line } = buddyLine();
+  const todayKey = dayKey();
+  const week = thisWeek(state.history);
+  $("#view-today").innerHTML = `
+    <header class="topbar">
+      <div>
+        <div class="title">Hi${state.name ? `, ${escapeHtml(state.name)}` : ""} 👋</div>
+        <div class="sub">${formatLongDate(new Date())}</div>
+      </div>
+      <div class="pill" aria-label="${streak} day streak">🔥 ${streak}</div>
+    </header>
+    <div class="scroll">
+      <section class="hero">
+        <div class="speech" id="speech">${escapeHtml(line)}</div>
+        <button type="button" class="hero-buddy" data-act="poke" aria-label="Give ${escapeHtml(buddyName())} a high five">
+          ${figureSVG(state.buddy, { anim: "idle", mood, wear: wearing(), cycle: 3.2, label: buddyName() })}
+        </button>
+        <div class="level-row">
+          <span class="level-tag">Level ${lv.level}</span>
+          <span class="meter" role="progressbar" aria-label="XP towards the next level" aria-valuemin="0" aria-valuemax="${lv.span}" aria-valuenow="${lv.into}"><i style="width:${Math.round((lv.into / lv.span) * 100)}%"></i></span>
+          <span class="muted small">${lv.into} / ${lv.span} XP</span>
+        </div>
+      </section>
+      <section class="card pick">
+        <div class="pick-label">Today's pick</div>
+        <div class="pick-main">
+          <span class="pick-emoji" aria-hidden="true">${pick.emoji}</span>
+          <div>
+            <div class="pick-name">${escapeHtml(pick.name)}</div>
+            <div class="muted small">${formatDuration(workoutLength(pick))} · ${pick.moves.length * pick.rounds} moves · ${DIFFICULTIES[state.settings.difficulty].label}</div>
+          </div>
+        </div>
+        <div class="row">
+          <button type="button" class="btn primary grow" data-start="${pick.id}">▶ Start</button>
+          <button type="button" class="btn" data-open="${pick.id}">Details</button>
+        </div>
+      </section>
+      <section class="card week-card">
+        <div class="row-between"><h2>This week</h2><span class="muted small">${Math.min(done, goal)} of ${goal} workouts${done >= goal ? " ✅" : ""}</span></div>
+        <div class="week-dots">${week
+          .map(
+            (d, i) => `<div class="wd${d.minutes ? " on" : ""}${d.key === todayKey ? " today" : ""}" title="${formatShortDate(d.date)}${d.minutes ? `: ${d.minutes} min` : ""}">
+              <i aria-hidden="true">${d.minutes ? "✓" : ""}</i><span>${WEEKDAY_LETTERS[i]}</span></div>`,
+          )
+          .join("")}</div>
+      </section>
+      <h2 class="section-title">All workouts</h2>
+      <div class="workout-list">${WORKOUTS.map(workoutCard).join("")}</div>
+    </div>`;
 }
 
 function poke() {
-  const stage = $("#stage-alien");
-  wiggle(stage);
-  if (busy) return;
-  const bubble = $("#poke");
-  bubble.textContent = POKES[Math.floor(Math.random() * POKES.length)];
-  bubble.classList.remove("show");
-  void bubble.offsetWidth;
-  bubble.classList.add("show");
-  setMood(stage, "happy");
-  setTimeout(() => !busy && setMood(stage, restingMood()), 1200);
+  const svg = $("#view-today .hero-buddy svg");
+  const fig = figureById(state.buddy);
+  pose(svg, { anim: "celebrate", mood: "happy", cycle: 0.8 });
+  const speech = $("#speech");
+  speech.textContent = fig.cheers[Math.floor(Math.random() * fig.cheers.length)];
+  speech.classList.remove("bump");
+  void speech.offsetWidth;
+  speech.classList.add("bump");
+  clearTimeout(poke.timer);
+  poke.timer = setTimeout(() => {
+    if (svg.isConnected) pose(svg, { anim: "idle", mood: buddyLine().mood, cycle: 3.2 });
+  }, 1600);
 }
 
-function bindChat() {
-  const input = $("#input");
-  $("#composer").addEventListener("submit", (e) => {
-    e.preventDefault();
-    sendText(input.value);
-  });
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      sendText(input.value);
-    }
-  });
-  input.addEventListener("input", () => {
-    autosize(input);
-    renderIdeas();
-    if (!busy) setMood($("#stage-alien"), input.value.trim() ? "listening" : restingMood());
-  });
-  input.addEventListener("focus", () => {
-    document.body.classList.add("typing");
-    setTimeout(() => scrollToBottom(true), 300);
-  });
-  input.addEventListener("blur", () => document.body.classList.remove("typing"));
-  // Send-knappen må ikke tage fokus, så tastaturet bliver oppe efter afsendelse.
-  $("#send").addEventListener("mousedown", (e) => e.preventDefault());
-  // Et tryk i samtalen lukker tastaturet igen.
-  $("#messages").addEventListener("click", (e) => {
-    if (!e.target.closest("button")) input.blur();
-  });
-  $("#ideas").addEventListener("click", (e) => {
-    const idea = e.target.closest("[data-idea]")?.dataset.idea;
-    if (!idea || busy) return;
-    useIdea(idea);
-    sendText(idea);
-  });
-  $("#stage").addEventListener("click", poke);
-  $("#chat-dust").addEventListener("click", () => showView("planet"));
+// ---------- Workout details ----------
+
+function openWorkout(id) {
+  const w = workoutById(id);
+  if (!w) return;
+  detail = { id, difficulty: state.settings.difficulty, rounds: w.rounds };
+  showView("workout");
 }
 
-// ---------- Planet ----------
-
-function renderPlanet() {
-  $("#planet-name").textContent = state.profile.planetName;
-  $("#planet-wrap").innerHTML = planetSVG({ planet: state.planet, color: state.profile.color, friendName: friend() });
-  updateDust();
-  $("#shop-list").innerHTML = ITEMS.map((item) => {
-    const owned = item.unique && state.planet.items.some((it) => it.type === item.id);
-    const poor = !owned && state.dust.balance < item.cost;
-    return `<button type="button" class="shop-item${owned ? " owned" : ""}${poor ? " poor" : ""}" data-buy="${item.id}" ${owned ? "disabled" : ""}>
-      ${itemPreview(item)}
-      <span class="shop-name">${item.name}</span>
-      <span class="shop-cost">${owned ? "På planeten" : `✨ ${item.cost}`}</span>
-    </button>`;
-  }).join("");
+function renderWorkout() {
+  const w = workoutById(detail.id);
+  const d = DIFFICULTIES[detail.difficulty];
+  const length = workoutLength(w, detail.difficulty, detail.rounds);
+  $("#view-workout").innerHTML = `
+    <header class="topbar"><button type="button" class="back" data-act="back">‹ Workouts</button></header>
+    <div class="scroll">
+      <div class="detail-head">
+        <div class="detail-emoji" aria-hidden="true">${w.emoji}</div>
+        <h1>${escapeHtml(w.name)}</h1>
+        <p class="muted">${escapeHtml(w.blurb)}</p>
+      </div>
+      <section class="card">
+        <div class="field-label">Difficulty</div>
+        ${segmented("difficulty", Object.entries(DIFFICULTIES).map(([id, x]) => [id, x.label]), detail.difficulty)}
+        <div class="row-between">
+          <div class="field-label">Rounds</div>
+          <div class="stepper">
+            <button type="button" data-rounds="-1" aria-label="Fewer rounds" ${detail.rounds <= 1 ? "disabled" : ""}>−</button>
+            <span>${detail.rounds}</span>
+            <button type="button" data-rounds="1" aria-label="More rounds" ${detail.rounds >= 4 ? "disabled" : ""}>+</button>
+          </div>
+        </div>
+        <div class="summary"><b>${formatDuration(length)}</b> · ${w.moves.length * detail.rounds} moves · ${d.work} s on, ${w.rest ?? d.rest} s rest</div>
+      </section>
+      <h2 class="section-title">Moves</h2>
+      <ul class="moves">${w.moves
+        .map((id) => {
+          const ex = EXERCISES[id];
+          return `<li><button type="button" class="move" data-preview="${id}">
+            <span class="move-thumb">${figureSVG(state.buddy, { anim: id, mood: "work", cycle: ex.cycle, phase: ex.peak })}</span>
+            <span class="move-text"><b>${escapeHtml(ex.name)}</b><span class="muted small">${escapeHtml(ex.tip)}</span></span>
+          </button></li>`;
+        })
+        .join("")}</ul>
+    </div>
+    <div class="start-bar"><button type="button" class="btn primary big" data-start="${w.id}">▶ Start workout</button></div>`;
 }
 
-function buy(id) {
-  const item = itemById(id);
-  if (!item) return;
-  const missing = item.cost - state.dust.balance;
-  if (missing > 0) {
-    toast(`Du mangler ${missing} stjernestøv. Snak med ${friend()} for at samle mere ✨`);
-    return;
-  }
-  let angle = 0;
-  if (!item.unique) {
-    angle = findFreeAngle(state.planet);
-    if (angle === null) {
-      toast("Planeten er fuld. Tryk på en ting for at fjerne den.");
-      return;
-    }
-  }
-  state.dust.balance -= item.cost;
-  state.planet.items.push({ id: uid(), type: item.id, angle });
-  addMessage("user", `${state.profile.userName} satte ${itemPhrase(item)} på planeten.`, {
-    event: true,
-    note: `Du satte ${itemPhrase(item)} på planeten`,
-  });
-  save();
-  renderPlanet();
-  const alien = $("#planet-wrap");
-  setMood(alien, "happy");
-  setTimeout(() => setMood(alien, "idle"), 1600);
-  toast(`${item.name} er sat på ${state.profile.planetName}!`);
-}
-
-async function removeItem(id) {
-  const placed = state.planet.items.find((it) => it.id === id);
-  const item = placed && itemById(placed.type);
-  if (!item) return;
-  const refund = Math.floor(item.cost / 2);
-  const ok = await confirmSheet(item.name, `Vil du fjerne den fra planeten? Du får ${refund} stjernestøv tilbage.`, "Fjern", "danger");
-  if (!ok) return;
-  state.planet.items = state.planet.items.filter((it) => it.id !== id);
-  state.dust.balance += refund;
-  addMessage("user", `${state.profile.userName} fjernede ${itemPhrase(item)} fra planeten.`, {
-    event: true,
-    note: `Du fjernede ${itemPhrase(item)} fra planeten`,
-  });
-  save();
-  renderPlanet();
-}
-
-function bindPlanet() {
-  const wrap = $("#planet-wrap");
-  let drag = null;
-  wrap.addEventListener("pointerdown", (e) => {
-    drag = { x: e.clientX, start: state.planet.rotation, moved: false, target: e.target };
-    wrap.setPointerCapture(e.pointerId);
-  });
-  wrap.addEventListener("pointermove", (e) => {
-    if (!drag) return;
-    const dx = e.clientX - drag.x;
-    if (Math.abs(dx) > 6) drag.moved = true;
-    if (!drag.moved) return;
-    state.planet.rotation = drag.start + dx * 0.45;
-    $("#planet-rot")?.setAttribute("transform", `rotate(${state.planet.rotation.toFixed(1)} 200 250)`);
-  });
-  const end = () => {
-    if (!drag) return;
-    const { moved, target } = drag;
-    drag = null;
-    if (moved) {
-      state.planet.rotation = ((state.planet.rotation % 360) + 360) % 360;
-      save();
-      return;
-    }
-    const itemId = target.closest?.("[data-item]")?.dataset.item;
-    if (itemId) removeItem(itemId);
-    else if (target.closest?.(".alien")) wiggle(wrap);
-  };
-  wrap.addEventListener("pointerup", end);
-  wrap.addEventListener("pointercancel", () => {
-    drag = null;
-  });
-  $("#shop-list").addEventListener("click", (e) => {
-    const id = e.target.closest("[data-buy]")?.dataset.buy;
-    if (id) buy(id);
+function previewMove(id) {
+  const ex = EXERCISES[id];
+  sheet({
+    title: ex.name,
+    text: ex.tip,
+    html: `<div class="preview-buddy">${figureSVG(state.buddy, { anim: id, mood: "work", cycle: ex.cycle, wear: wearing() })}</div>`,
+    buttons: [{ value: "ok", label: "Got it", kind: "primary" }],
   });
 }
 
-// ---------- Minder ----------
+// ---------- Running a workout ----------
 
-function renderMemories() {
-  const groups = [
-    ["user", "Om dig"],
-    ["friend", `Om ${friend()}`],
-    ["shared", "Jeres fælles"],
-  ];
-  const list = groups
-    .map(([kind, title]) => {
-      const items = state.memory.items.filter((it) => it.kind === kind);
-      if (!items.length) return "";
-      return `<section class="card"><h2>${escapeHtml(title)}</h2><ul class="memory-list">${items
-        .map(
-          (it) => `<li><span>${escapeHtml(it.text)}</span>
-            <button type="button" class="icon-btn" data-forget="${it.id}" aria-label="Glem">×</button></li>`,
-        )
-        .join("")}</ul></section>`;
-    })
-    .join("");
-  $("#mem-sub").textContent = `Det, ${friend()} husker`;
-  $("#mem-list").innerHTML = `
-    <p class="intro">${escapeHtml(friend())} husker selv vigtige ting fra jeres samtaler. Du kan slette det, du ikke vil have, at den husker, eller fortælle den noget direkte.</p>
-    <form class="card add-memory" id="add-memory">
-      <input name="text" maxlength="200" placeholder="Fx: Jeg er vild med lakrids" aria-label="Nyt minde">
-      <button class="btn primary">Tilføj</button>
-    </form>
-    ${list || `<p class="empty">Ingen minder endnu. Snak lidt med ${escapeHtml(friend())} først ✨</p>`}
-    <button type="button" class="btn ghost" data-action="refresh-memories">Gennemgå nye beskeder nu</button>`;
-}
-
-function bindMemories() {
-  const root = $("#mem-list");
-  root.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = e.target.elements.text;
-    addManualMemory(input.value);
-    renderMemories();
-  });
-  root.addEventListener("click", async (e) => {
-    const id = e.target.closest("[data-forget]")?.dataset.forget;
-    if (id) {
-      removeMemory(id);
-      renderMemories();
-      return;
-    }
-    if (e.target.closest("[data-action=refresh-memories]")) {
-      if (!state.settings.apiKey) return toast("Tilføj en API-nøgle først.");
-      toast(`${friend()} tænker over jeres samtaler …`);
-      try {
-        const added = await updateMemories({ force: true });
-        toast(added ? `✨ ${added} nye minder` : "Ingen nye ting at huske lige nu.");
-        renderMemories();
-      } catch (err) {
-        toast(describeError(err) || "Det lykkedes ikke.");
-      }
-    }
+function begin(id) {
+  if (isRunning()) return;
+  const workout = workoutById(id);
+  const fromDetail = currentView === "workout" && detail?.id === id;
+  startWorkout({
+    workout,
+    difficulty: fromDetail ? detail.difficulty : state.settings.difficulty,
+    rounds: fromDetail ? detail.rounds : workout.rounds,
+    settings: state.settings,
+    buddy: state.buddy,
+    wear: wearing(),
+    onComplete: recordSession,
+    onSettings: () => save(),
+    onClose: () => showView("today"),
   });
 }
 
-// ---------- Indstillinger ----------
+function recordSession(result) {
+  const before = level();
+  const session = { id: uid(), ts: Date.now(), ...result };
+  state.history.push(session);
+  const streak = currentStreak(state.history);
+  session.xp = sessionXP({ active: result.active, completed: result.completed, streak });
+  state.xp += session.xp;
+  const after = level();
+  const unlocked = ACCESSORIES.filter((a) => a.level > before && a.level <= after);
+  for (const a of unlocked) if (!state.wear.includes(a.id)) state.wear.push(a.id);
+  saveNow();
+  return { xp: session.xp, streak, level: after, levelUp: after > before, unlocked, wear: wearing() };
+}
+
+// ---------- Progress ----------
+
+function heatLevel(minutes) {
+  if (!minutes) return 0;
+  if (minutes <= 10) return 1;
+  if (minutes <= 20) return 2;
+  if (minutes <= 30) return 3;
+  return 4;
+}
+
+function renderProgress() {
+  const t = totals(state.history);
+  const streak = currentStreak(state.history);
+  const best = bestStreak(state.history);
+  const week = thisWeek(state.history);
+  const weekTotal = week.reduce((sum, d) => sum + d.minutes, 0);
+  const max = Math.max(...week.map((d) => d.minutes));
+  // Headroom above the tallest bar so its label never meets the scale label.
+  const scale = Math.max(10, Math.ceil((max * 1.2) / 10) * 10);
+  const maxIndex = max > 0 ? week.findIndex((d) => d.minutes === max) : -1;
+  const weeks = calendar(state.history, 12);
+  const trained = weeks.flat().filter((d) => d.minutes > 0).length;
+  const recent = state.history.slice(-8).reverse();
+  const days = (n) => `${n} ${n === 1 ? "day" : "days"}`;
+
+  $("#view-progress").innerHTML = `
+    <header class="topbar"><div class="title">Progress</div></header>
+    <div class="scroll">
+      <div class="stats">
+        <div class="stat"><span class="stat-label">Workouts</span><span class="stat-value">${t.workouts}</span></div>
+        <div class="stat"><span class="stat-label">Active minutes</span><span class="stat-value">${t.minutes}</span></div>
+        <div class="stat"><span class="stat-label">Current streak</span><span class="stat-value">${days(streak)}</span></div>
+        <div class="stat"><span class="stat-label">Best streak</span><span class="stat-value">${days(best)}</span></div>
+      </div>
+
+      <section class="card viz">
+        <div class="row-between"><h2>Active minutes this week</h2><span class="muted small">${weekTotal} min</span></div>
+        <div class="bars" role="group" aria-label="Active minutes per day this week">
+          <span class="bars-scale" aria-hidden="true">${scale}</span>
+          ${week
+            .map((d, i) => {
+              const h = d.minutes ? Math.max(4, (d.minutes / scale) * 100) : 0;
+              return `<button type="button" class="bar-col${d.future ? " future" : ""}" data-tip="${d.minutes} min" data-tip-label="${formatShortDate(d.date)}" aria-label="${formatShortDate(d.date)}: ${d.minutes} minutes">
+                <span class="bar-area">${i === maxIndex ? `<span class="bar-value" style="bottom:${h}%">${d.minutes}</span>` : ""}<span class="bar" style="height:${h}%"></span></span>
+                <span class="bar-day${d.key === dayKey() ? " today" : ""}">${WEEKDAY_LETTERS[i]}</span>
+              </button>`;
+            })
+            .join("")}
+        </div>
+        <details class="table-view"><summary>Show as table</summary>
+          <table><thead><tr><th>Day</th><th>Minutes</th></tr></thead><tbody>${week
+            .map((d) => `<tr><td>${formatShortDate(d.date)}</td><td>${d.minutes}</td></tr>`)
+            .join("")}</tbody></table>
+        </details>
+      </section>
+
+      <section class="card viz">
+        <div class="row-between"><h2>Last 12 weeks</h2><span class="muted small">${days(trained)} with training</span></div>
+        <div class="heat" role="group" aria-label="Training days in the last 12 weeks">
+          <div class="heat-months" aria-hidden="true"><span></span>${weeks
+            .map((w, i) => {
+              const first = w[0].date;
+              const show = i === 0 || first.getMonth() !== weeks[i - 1][0].date.getMonth();
+              return `<span>${show ? formatMonth(first) : ""}</span>`;
+            })
+            .join("")}</div>
+          <div class="heat-grid">
+            <div class="heat-days" aria-hidden="true"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span></span></div>
+            ${weeks
+              .map(
+                (w) => `<div class="heat-week">${w
+                  .map((d) =>
+                    d.future
+                      ? `<span class="cell future"></span>`
+                      : `<span class="cell h${heatLevel(d.minutes)}" data-tip="${d.minutes ? `${d.minutes} min` : "Rest day"}" data-tip-label="${formatShortDate(d.date)}"></span>`,
+                  )
+                  .join("")}</div>`,
+              )
+              .join("")}
+          </div>
+          <div class="heat-legend" aria-hidden="true">Less <i class="cell h0"></i><i class="cell h1"></i><i class="cell h2"></i><i class="cell h3"></i><i class="cell h4"></i> More</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Recent workouts</h2>
+        ${
+          recent.length
+            ? `<ul class="history">${recent
+                .map((s) => {
+                  const w = workoutById(s.workout);
+                  return `<li><span class="history-emoji" aria-hidden="true">${w?.emoji ?? "💪"}</span>
+                    <span class="history-text"><b>${escapeHtml(w?.name ?? "Workout")}</b>
+                    <span class="muted small">${relativeDay(s.ts)} · ${Math.max(1, Math.round(s.active / 60))} min · ${DIFFICULTIES[s.difficulty]?.label ?? ""}${s.completed ? "" : " · ended early"}</span></span>
+                    <span class="history-xp">+${s.xp} XP</span></li>`;
+                })
+                .join("")}</ul>`
+            : `<p class="muted">No workouts yet. Your first one will show up here.</p>`
+        }
+      </section>
+      <div class="viz-tip" id="viz-tip" role="status"><b></b><span></span></div>
+    </div>`;
+}
+
+function showTip(target) {
+  const tip = $("#viz-tip");
+  if (!tip || !target?.dataset.tip) return hideTip();
+  tip.querySelector("b").textContent = target.dataset.tip;
+  tip.querySelector("span").textContent = target.dataset.tipLabel || "";
+  const scroller = $("#view-progress .scroll");
+  const bar = target.querySelector(".bar");
+  const box = (bar && bar.offsetHeight ? bar : target.querySelector(".bar-area") || target).getBoundingClientRect();
+  const anchorTop = bar && !bar.offsetHeight ? box.bottom : box.top;
+  const host = scroller.getBoundingClientRect();
+  tip.classList.add("show");
+  const left = box.left - host.left + box.width / 2 - tip.offsetWidth / 2;
+  tip.style.left = `${Math.max(8, Math.min(left, host.width - tip.offsetWidth - 8))}px`;
+  tip.style.top = `${anchorTop - host.top + scroller.scrollTop - tip.offsetHeight - 8}px`;
+  document.querySelectorAll(".viz .active").forEach((el) => el.classList.remove("active"));
+  target.classList.add("active");
+}
+
+function hideTip() {
+  $("#viz-tip")?.classList.remove("show");
+  document.querySelectorAll(".viz .active").forEach((el) => el.classList.remove("active"));
+}
+
+// ---------- Buddy ----------
+
+function renderBuddy() {
+  const fig = figureById(state.buddy);
+  const lv = levelInfo(state.xp);
+  $("#view-buddy").innerHTML = `
+    <header class="topbar"><div class="title">Your buddy</div><div class="pill">Level ${lv.level}</div></header>
+    <div class="scroll">
+      <section class="card buddy-hero">
+        <button type="button" class="buddy-big" data-act="cheer" aria-label="Make ${escapeHtml(buddyName())} jump">
+          ${figureSVG(state.buddy, { anim: "idle", mood: "happy", wear: wearing(), cycle: 3.2, label: buddyName() })}
+        </button>
+        <label class="field">Name<input data-buddy-name maxlength="16" value="${escapeHtml(buddyName())}"></label>
+        <p class="muted small">${fig.species} · ${escapeHtml(fig.blurb)}</p>
+      </section>
+      <h2 class="section-title">Choose your buddy</h2>
+      <div class="buddy-grid" role="radiogroup" aria-label="Buddies">${FIGURES.map(
+        (f) => `<button type="button" class="buddy-card" role="radio" aria-checked="${f.id === state.buddy}" data-buddy="${f.id}">
+          ${figureSVG(f.id, { anim: "idle", phase: 0, cycle: 3.2, wear: wearing() })}
+          <b>${escapeHtml(buddyName(f.id))}</b><span class="muted small">${f.species}</span></button>`,
+      ).join("")}</div>
+      <h2 class="section-title">Wardrobe</h2>
+      <p class="muted small section-note">Train to level up and unlock new gear. Tap to put it on or take it off.</p>
+      <div class="wardrobe">${ACCESSORIES.map((a) => {
+        const unlocked = lv.level >= a.level;
+        const on = unlocked && state.wear.includes(a.id);
+        return `<button type="button" class="gear${unlocked ? "" : " locked"}${on ? " on" : ""}" data-gear="${a.id}" ${unlocked ? "" : "disabled"} aria-pressed="${on}">
+          ${figureSVG(state.buddy, { anim: "idle", phase: 0, cycle: 3.2, wear: [a.id] })}
+          <b>${a.name}</b><span class="muted small">${unlocked ? (on ? "Wearing" : "Tap to wear") : `🔒 Level ${a.level}`}</span></button>`;
+      }).join("")}</div>
+    </div>`;
+}
+
+// ---------- Settings ----------
 
 function renderSettings() {
-  const { profile, settings, usage } = state;
-  const month = new Intl.DateTimeFormat("da-DK", { month: "long" }).format(new Date());
-  const spent = usage.month === monthKey() ? usage : { usd: 0, requests: 0 };
-  $("#settings-body").innerHTML = `
-    <section class="card">
-      <h2>Profil</h2>
-      <label>Dit navn<input data-field="profile.userName" maxlength="40" value="${escapeHtml(profile.userName)}"></label>
-      <label>Vennens navn<input data-field="profile.friendName" maxlength="24" value="${escapeHtml(profile.friendName)}"></label>
-      <label>Planetens navn<input data-field="profile.planetName" maxlength="30" value="${escapeHtml(profile.planetName)}"></label>
-      <div class="label">Farve</div>
-      <div class="swatches">${swatchesHTML(profile.color, "settings-color")}</div>
-    </section>
-    <section class="card">
-      <h2>Claude</h2>
-      <label>API-nøgle<input data-field="settings.apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" autocapitalize="off" spellcheck="false" value="${escapeHtml(settings.apiKey)}"></label>
-      <p class="hint">Nøglen gemmes kun på denne telefon og sendes kun til Anthropic. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Få en nøgle</a></p>
-      <label>Model<select data-field="settings.model">${MODELS.map(
-        (m) => `<option value="${m.id}" ${m.id === settings.model ? "selected" : ""}>${m.label} – ${m.note}</option>`,
-      ).join("")}</select></label>
-      <button type="button" class="btn" data-action="test-key">Test forbindelsen</button>
-      <p class="hint">Forbrug i ${month}: ca. ${formatUSD(spent.usd)} (${spent.requests} kald). Det præcise tal står på console.anthropic.com.</p>
-    </section>
-    <section class="card">
-      <h2>Lyd</h2>
-      <label class="toggle"><input type="checkbox" data-field="settings.speak" ${settings.speak ? "checked" : ""} ${
-        speechSupported ? "" : "disabled"
-      }><span>Læs ${escapeHtml(friend())}s beskeder højt</span></label>
-    </section>
-    <section class="card">
-      <h2>Dine data</h2>
-      <p class="hint">Alt gemmes kun på denne telefon. Gem en sikkerhedskopi, hvis du skifter telefon. API-nøglen kommer ikke med.</p>
-      <div class="row">
-        <button type="button" class="btn" data-action="export">Gem sikkerhedskopi</button>
-        <label class="btn">Hent sikkerhedskopi<input type="file" accept="application/json,.json" data-action="import" hidden></label>
-      </div>
-      <button type="button" class="btn danger" data-action="reset">Slet alt og start forfra</button>
-    </section>
-    <p class="about">Stjerneven · din lille ven fra rummet</p>`;
-}
-
-function setField(path, value) {
-  const [section, key] = path.split(".");
-  state[section][key] = value;
-  save();
-  if (section === "profile") {
-    applyTheme();
-    stageColor = "";
-  }
+  const s = state.settings;
+  $("#view-settings").innerHTML = `
+    <header class="topbar"><div class="title">Settings</div></header>
+    <div class="scroll">
+      <section class="card">
+        <h2>You</h2>
+        <label class="field">Your name<input data-field="name" maxlength="30" value="${escapeHtml(state.name)}"></label>
+      </section>
+      <section class="card">
+        <h2>Workouts</h2>
+        <div class="field-label">Default difficulty</div>
+        ${segmented("default-difficulty", Object.entries(DIFFICULTIES).map(([id, d]) => [id, `${d.label} · ${d.work}s`]), s.difficulty)}
+        <div class="row-between">
+          <div class="field-label">Weekly goal</div>
+          <div class="stepper">
+            <button type="button" data-weekly="-1" aria-label="Lower goal" ${s.weeklyGoal <= 1 ? "disabled" : ""}>−</button>
+            <span>${s.weeklyGoal} × a week</span>
+            <button type="button" data-weekly="1" aria-label="Raise goal" ${s.weeklyGoal >= 7 ? "disabled" : ""}>+</button>
+          </div>
+        </div>
+        <div class="field-label">Get-ready time</div>
+        ${segmented("ready", [["5", "5 s"], ["10", "10 s"], ["15", "15 s"]], String(s.readySeconds))}
+      </section>
+      <section class="card">
+        <h2>Sound</h2>
+        <label class="toggle"><span>Beeps</span><input type="checkbox" data-setting="sound" ${s.sound ? "checked" : ""}></label>
+        <label class="toggle"><span>Voice coach</span><input type="checkbox" data-setting="voice" ${s.voice ? "checked" : ""}></label>
+        <button type="button" class="btn" data-act="test-sound">Test sound</button>
+        <p class="muted small">Beeps follow the ring/silent switch. The voice uses your iPhone's English voice.</p>
+      </section>
+      <section class="card">
+        <h2>Your data</h2>
+        <p class="muted small">Everything is stored only on this phone. Save a backup if you switch phones.</p>
+        <div class="row">
+          <button type="button" class="btn grow" data-act="export">Save backup</button>
+          <label class="btn grow">Restore backup<input type="file" accept="application/json,.json" data-act="import" hidden></label>
+        </div>
+        <button type="button" class="btn danger" data-act="reset">Delete everything</button>
+      </section>
+      <p class="about">Peppy · works offline · no account, no ads</p>
+    </div>`;
 }
 
 async function exportBackup() {
-  const name = `stjerneven-${dayKey()}.json`;
+  const name = `peppy-backup-${dayKey()}.json`;
   const file = new File([JSON.stringify(exportState(), null, 2)], name, { type: "application/json" });
   if (navigator.canShare?.({ files: [file] })) {
     try {
-      await navigator.share({ files: [file], title: "Stjerneven-sikkerhedskopi" });
+      await navigator.share({ files: [file], title: "Peppy backup" });
       return;
     } catch (err) {
       if (err.name === "AbortError") return;
@@ -746,59 +614,132 @@ async function importBackup(file) {
   let data;
   try {
     data = JSON.parse(await file.text());
-    if (!data || !Array.isArray(data.messages) || typeof data.profile !== "object") throw new Error("ugyldig");
+    if (!data || !Array.isArray(data.history) || typeof data.settings !== "object") throw new Error("invalid");
   } catch {
-    toast("Filen er ikke en Stjerneven-sikkerhedskopi.");
+    toast("That file isn't a Peppy backup.");
     return;
   }
-  const ok = await confirmSheet("Hent sikkerhedskopi?", "Det erstatter alt på denne telefon. Din API-nøgle bliver.", "Hent");
+  const ok = await confirmSheet("Restore backup?", "This replaces everything on this phone.", "Restore");
   if (!ok) return;
   replaceState(data);
-  applyTheme();
-  stageColor = "";
-  toast("Sikkerhedskopien er hentet ✨");
-  showView("chat");
+  toast("Backup restored ✨");
+  showView("today");
 }
 
-function bindSettings() {
-  const root = $("#settings-body");
-  root.addEventListener("change", async (e) => {
-    const t = e.target;
-    if (t.name === "settings-color") {
-      setField("profile.color", t.value);
-      return;
-    }
-    if (t.dataset.action === "import" && t.files[0]) {
-      await importBackup(t.files[0]);
-      t.value = "";
-      return;
-    }
-    if (!t.dataset.field) return;
-    const value = t.type === "checkbox" ? t.checked : t.value.trim();
-    if (t.dataset.field.startsWith("profile.") && !value) return;
-    setField(t.dataset.field, value);
-    if (t.dataset.field === "settings.speak" && value) unlockSpeech();
-    if (t.dataset.field === "settings.apiKey" && value) refreshDailyIdeas();
+// ---------- Events ----------
+
+function bindEvents() {
+  $("#tabbar").addEventListener("click", (e) => {
+    const view = e.target.closest("[data-view]")?.dataset.view;
+    if (view) showView(view);
   });
-  root.addEventListener("click", async (e) => {
-    const action = e.target.closest("[data-action]")?.dataset.action;
-    if (action === "test-key") {
-      const key = state.settings.apiKey;
-      if (!key) return toast("Indsæt en API-nøgle først.");
-      toast("Tester …");
-      try {
-        await verifyKey({ apiKey: key, model: state.settings.model });
-        toast("✅ Nøglen virker!");
-      } catch (err) {
-        toast(describeError(err) || "Det lykkedes ikke.", 4000);
-      }
-    } else if (action === "export") {
+
+  // Start buttons, workout cards and back buttons appear on several screens.
+  document.querySelector(".views").addEventListener("click", (e) => {
+    const start = e.target.closest("[data-start]")?.dataset.start;
+    if (start) return begin(start);
+    const open = e.target.closest("[data-open]")?.dataset.open;
+    if (open) return openWorkout(open);
+    if (e.target.closest("[data-act=back]")) showView("today");
+  });
+
+  $("#view-today").addEventListener("click", (e) => {
+    if (e.target.closest("[data-act=poke]")) poke();
+  });
+
+  $("#view-workout").addEventListener("click", (e) => {
+    const seg = e.target.closest("[data-seg=difficulty]");
+    if (seg) {
+      detail.difficulty = seg.dataset.value;
+      renderWorkout();
+      return;
+    }
+    const rounds = e.target.closest("[data-rounds]")?.dataset.rounds;
+    if (rounds) {
+      detail.rounds = Math.min(4, Math.max(1, detail.rounds + Number(rounds)));
+      renderWorkout();
+      return;
+    }
+    const preview = e.target.closest("[data-preview]")?.dataset.preview;
+    if (preview) previewMove(preview);
+  });
+
+  const progress = $("#view-progress");
+  progress.addEventListener("pointerover", (e) => {
+    if (e.pointerType === "mouse") showTip(e.target.closest("[data-tip]"));
+  });
+  progress.addEventListener("click", (e) => {
+    const target = e.target.closest("[data-tip]");
+    if (target) showTip(target);
+    else hideTip();
+  });
+  progress.addEventListener("focusin", (e) => showTip(e.target.closest("[data-tip]")));
+  progress.addEventListener("pointerleave", hideTip);
+  progress.addEventListener("scroll", hideTip, true);
+
+  const buddy = $("#view-buddy");
+  buddy.addEventListener("click", (e) => {
+    const id = e.target.closest("[data-buddy]")?.dataset.buddy;
+    if (id) {
+      state.buddy = id;
+      save();
+      renderBuddy();
+      return;
+    }
+    const gear = e.target.closest("[data-gear]")?.dataset.gear;
+    if (gear) {
+      state.wear = state.wear.includes(gear) ? state.wear.filter((g) => g !== gear) : [...state.wear, gear];
+      save();
+      renderBuddy();
+      return;
+    }
+    if (e.target.closest("[data-act=cheer]")) {
+      const svg = buddy.querySelector(".buddy-big svg");
+      pose(svg, { anim: "celebrate", cycle: 0.8 });
+      setTimeout(() => svg.isConnected && pose(svg, { anim: "idle", cycle: 3.2 }), 1600);
+    }
+  });
+  buddy.addEventListener("change", (e) => {
+    if (!e.target.matches("[data-buddy-name]")) return;
+    const value = e.target.value.trim();
+    if (!value || value === figureById(state.buddy).name) delete state.buddyNames[state.buddy];
+    else state.buddyNames[state.buddy] = value;
+    save();
+    renderBuddy();
+  });
+
+  const settings = $("#view-settings");
+  settings.addEventListener("click", async (e) => {
+    const seg = e.target.closest("[data-seg]");
+    if (seg?.dataset.seg === "default-difficulty") {
+      state.settings.difficulty = seg.dataset.value;
+      selectSegment(seg);
+      save();
+    } else if (seg?.dataset.seg === "ready") {
+      state.settings.readySeconds = Number(seg.dataset.value);
+      selectSegment(seg);
+      save();
+    }
+    const weekly = e.target.closest("[data-weekly]")?.dataset.weekly;
+    if (weekly) {
+      state.settings.weeklyGoal = Math.min(7, Math.max(1, state.settings.weeklyGoal + Number(weekly)));
+      save();
+      renderSettings();
+      return;
+    }
+    const act = e.target.closest("[data-act]")?.dataset.act;
+    if (act === "test-sound") {
+      unlockAudio();
+      if (state.settings.sound) beep.go();
+      if (state.settings.voice) say(`Hi${state.name ? ` ${state.name}` : ""}! Ready when you are.`);
+      if (!state.settings.sound && !state.settings.voice) toast("Turn on beeps or the voice coach first.");
+    } else if (act === "export") {
       exportBackup();
-    } else if (action === "reset") {
+    } else if (act === "reset") {
       const ok = await confirmSheet(
-        "Slet alt?",
-        `Alle beskeder, minder og jeres planet bliver slettet fra telefonen. ${friend()} glemmer dig.`,
-        "Slet alt",
+        "Delete everything?",
+        "All workouts, XP and settings will be removed from this phone.",
+        "Delete everything",
         "danger",
       );
       if (!ok) return;
@@ -806,60 +747,46 @@ function bindSettings() {
       location.reload();
     }
   });
-}
-
-// ---------- Opstart ----------
-
-function onAppVisible() {
-  if (!state.onboarded) return;
-  checkDailyBonus();
-  maybeGreet();
-  refreshDailyIdeas().then((changed) => changed && renderIdeas());
-  updateMemories({ staleMs: MEMORY_STALE_MS })
-    .then((added) => added > 0 && toast(`✨ ${friend()} husker nye ting`))
-    .catch((err) => console.warn("Kunne ikke opdatere minder", err));
-}
-
-function init() {
-  applyTheme();
-  buildSky();
-  syncViewport();
-  window.visualViewport?.addEventListener("resize", syncViewport);
-  window.visualViewport?.addEventListener("scroll", syncViewport);
-  window.addEventListener("resize", syncViewport);
-
-  bindOnboarding();
-  bindChat();
-  bindPlanet();
-  bindMemories();
-  bindSettings();
-  $("#tabbar").addEventListener("click", (e) => {
-    const view = e.target.closest("[data-view]")?.dataset.view;
-    if (view) showView(view);
+  settings.addEventListener("change", async (e) => {
+    const t = e.target;
+    if (t.dataset.act === "import" && t.files[0]) {
+      await importBackup(t.files[0]);
+      t.value = "";
+    } else if (t.dataset.setting) {
+      state.settings[t.dataset.setting] = t.checked;
+      save();
+    } else if (t.dataset.field === "name") {
+      state.name = t.value.trim();
+      save();
+    }
   });
+
   $("#sheet").addEventListener("click", (e) => {
     if (e.target.id === "sheet") e.target.close("cancel");
   });
-
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") onAppVisible();
-    else {
-      saveNow();
-      stopSpeaking();
-    }
+    if (document.visibilityState === "hidden") saveNow();
+    else if (currentView === "today" && !isRunning()) renderToday();
   });
   window.addEventListener("pagehide", saveNow);
+}
 
-  if (state.onboarded) {
-    showView("chat");
-    onAppVisible();
-  } else {
-    renderOnboarding();
-    showView("onboarding");
-  }
+// On iOS only the visible part of the screen shrinks when the keyboard opens.
+function syncViewport() {
+  const vv = window.visualViewport;
+  document.documentElement.style.setProperty("--app-height", `${vv ? vv.height : window.innerHeight}px`);
+  if (vv && vv.offsetTop > 0) window.scrollTo(0, 0);
+}
 
+function init() {
+  syncViewport();
+  window.visualViewport?.addEventListener("resize", syncViewport);
+  window.addEventListener("resize", syncViewport);
+  bindOnboarding();
+  bindEvents();
+  showView(state.onboarded ? "today" : "onboarding");
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("Service worker fejlede", err));
+    navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("Service worker failed", err));
   }
   navigator.storage?.persist?.().catch(() => {});
 }
