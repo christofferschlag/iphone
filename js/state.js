@@ -73,7 +73,11 @@ export function exportState() {
 
 export function resetState() {
   clearTimeout(timer);
-  localStorage.removeItem(KEY);
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* storage blocked */
+  }
 }
 
 export function uid() {

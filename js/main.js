@@ -785,7 +785,8 @@ function init() {
   bindOnboarding();
   bindEvents();
   showView(state.onboarded ? "today" : "onboarding");
-  if ("serviceWorker" in navigator) {
+  // Only as a top-level page: embedded previews (iframes) don't allow service workers.
+  if ("serviceWorker" in navigator && window.self === window.top) {
     navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("Service worker failed", err));
   }
   navigator.storage?.persist?.().catch(() => {});

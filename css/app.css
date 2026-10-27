@@ -49,6 +49,30 @@
   }
 }
 
+/* An explicit dark choice in the host (data-theme) wins over the OS setting. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #17131f;
+  --surface: #221c2e;
+  --surface-2: #2b2338;
+  --text: #f6f2ff;
+  --text-2: #c2bbd4;
+  --text-3: #938ba6;
+  --line: rgba(255, 255, 255, 0.1);
+  --accent: #ff7a4f;
+  --accent-ink: #1c1020;
+  --accent-soft: #4a2a2a;
+  --rest: #2ed3ac;
+  --danger: #ff6b70;
+  --shadow: none;
+  --chart: #d95926;
+  --heat-0: #2e2640;
+  --heat-1: #8f4321;
+  --heat-2: #c45a26;
+  --heat-3: #ee7d45;
+  --heat-4: #ffb48a;
+}
+
 * { box-sizing: border-box; }
 
 html,
